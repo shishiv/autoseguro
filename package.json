@@ -1,0 +1,22 @@
+{
+  "name": "autoseguro",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "chat": "node --env-file-if-exists=.env src/cli.ts",
+    "evaluate": "npm test && node --env-file-if-exists=.env src/evaluate.ts",
+    "test": "node --test --test-concurrency=1 test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src test",
+    "check": "npm run typecheck && npm run lint && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "oxlint": "^1.0.0",
+    "typescript": "^5.9.0"
+  }
+}
