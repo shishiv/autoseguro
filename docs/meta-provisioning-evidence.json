@@ -1,0 +1,39 @@
+{
+  "verified_at": "2026-08-28T23:34:37.226030Z",
+  "deployment": {
+    "isolation": "dedicated Dokploy project, compose service, volume, and domain",
+    "domain": "autoseguro.triangulotec.com.br",
+    "health": "ok"
+  },
+  "test_waba": {
+    "id": "***********3519",
+    "subscription_count": 1,
+    "app_id": "***********6952",
+    "override_callback_uri": "https://autoseguro.triangulotec.com.br/webhook"
+  },
+  "test_phone": {
+    "id": "***********9475",
+    "quality": "UNKNOWN",
+    "verification": "NOT_VERIFIED",
+    "webhook_configuration": {
+      "whatsapp_business_account": "https://autoseguro.triangulotec.com.br/webhook",
+      "application": "https://api.triangulotec.com.br/webhook"
+    }
+  },
+  "canonical_phone": {
+    "id": "************8621",
+    "quality": "GREEN",
+    "webhook_configuration": {
+      "application": "https://api.triangulotec.com.br/webhook"
+    },
+    "waba_override_present": false
+  },
+  "app": {
+    "default_whatsapp_callback": "https://api.triangulotec.com.br/webhook",
+    "unchanged": true
+  },
+  "live_round_trip": {
+    "status": "pending",
+    "reason": "confirmed allowlisted recipient not yet supplied"
+  }
+}

@@ -227,7 +227,7 @@ O rollback primeiro faz `POST /<WABA_ID>/subscribed_apps` sem corpo para remover
 
 O número de teste pode permanecer `NOT_VERIFIED` e com qualidade `UNKNOWN`. O Meta só aceita o destinatário de teste previamente autorizado. Faça o round trip manualmente pelo WhatsApp desse destinatário; `wacli` é opcional e nunca é necessário para instalar, provisionar ou concluir o teste.
 
-Registre somente horários, IDs truncados ou hashados, contagem de tentativas e resultado. [`docs/meta-live-evidence.example.json`](docs/meta-live-evidence.example.json) define o formato sem telefone, texto ou token. A prova deve mostrar a confirmação imediata e, em execuções isoladas, uma cotação tardia e um handoff após três falhas. Um volume descartável por cenário evita misturar estados sem tocar tráfego de produção.
+Registre somente horários, IDs truncados ou hashados, contagem de tentativas e resultado. [`docs/meta-live-evidence.example.json`](docs/meta-live-evidence.example.json) define o formato sem telefone, texto ou token. [`docs/meta-provisioning-evidence.json`](docs/meta-provisioning-evidence.json) registra o deploy e as pós-condições atuais. A prova deve mostrar a confirmação imediata e, em execuções isoladas, uma cotação tardia e um handoff após três falhas. Um volume descartável por cenário evita misturar estados sem tocar tráfego de produção.
 
 Esse round trip prova transporte, isolamento e retomada. Ele não substitui a avaliação estatística de 100 conversas em [`examples/evaluation/`](examples/evaluation/), que mede retries, duplicação, latência e ausência de preço inventado sob carga reproduzível.
 

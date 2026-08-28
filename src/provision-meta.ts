@@ -185,10 +185,11 @@ async function verifyPostcondition(
   options: ProvisionOptions,
   config: MetaRuntimeConfig,
   appId: string,
+  appAccessToken: string,
   callbackUrl: string,
   beforeCallback: string,
 ): Promise<WabaSubscription | null> {
-  const afterCallback = await appCallback(appId, config.accessToken);
+  const afterCallback = await appCallback(appId, appAccessToken);
   if (afterCallback !== beforeCallback) {
     throw new ProvisioningError("O callback padrão do app mudou; interrompa e investigue");
   }
@@ -203,6 +204,7 @@ async function verifyPostcondition(
 async function run(options: ProvisionOptions): Promise<void> {
   const config = metaRuntimeConfig();
   const appId = requiredAppId();
+  const appAccessToken = `${appId}|${config.appSecret}`;
   if (config.wabaId !== TEST_WABA_ID || config.phoneNumberId !== TEST_PHONE_NUMBER_ID) {
     throw new ProvisioningError("O alvo não é a conta Meta de teste autorizada");
   }
@@ -210,13 +212,13 @@ async function run(options: ProvisionOptions): Promise<void> {
   if (callbackUrl.length > 200) {
     throw new ProvisioningError("O callback excede 200 caracteres");
   }
-  const beforeCallback = await appCallback(appId, config.accessToken);
+  const beforeCallback = await appCallback(appId, appAccessToken);
   assertSafety(beforeCallback, callbackUrl);
   const before = await wabaSubscription(config.wabaId, appId, config.accessToken);
   printState(options, config, appId, before);
   if (options.smoke) {
     await verifyEndpoint(config);
-    await verifyPostcondition(options, config, appId, callbackUrl, beforeCallback);
+    await verifyPostcondition(options, config, appId, appAccessToken, callbackUrl, beforeCallback);
     console.log(JSON.stringify({ result: "smoke_passed" }));
     return;
   }
@@ -228,7 +230,7 @@ async function run(options: ProvisionOptions): Promise<void> {
   } else {
     await apply(config.wabaId, appId, config.accessToken, callbackUrl, config.verifyToken);
   }
-  const after = await verifyPostcondition(options, config, appId, callbackUrl, beforeCallback);
+  const after = await verifyPostcondition(options, config, appId, appAccessToken, callbackUrl, beforeCallback);
   printState(options, config, appId, after);
 }
 
