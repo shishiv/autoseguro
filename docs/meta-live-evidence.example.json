@@ -1,0 +1,25 @@
+{
+  "test_run": "replace-with-sanitized-live-run",
+  "callback_verified_at": "YYYY-MM-DDTHH:mm:ss.sssZ",
+  "app_callback_unchanged": true,
+  "waba_subscription": {
+    "target": "test-waba-redacted",
+    "override_present": true
+  },
+  "success": {
+    "inbound_message_id": "wamid-redacted",
+    "acknowledged_at": "YYYY-MM-DDTHH:mm:ss.sssZ",
+    "final_message_id": "wamid-redacted",
+    "final_at": "YYYY-MM-DDTHH:mm:ss.sssZ",
+    "quote_attempts": 1,
+    "outcome": "resolved"
+  },
+  "exhausted": {
+    "inbound_message_id": "wamid-redacted",
+    "acknowledged_at": "YYYY-MM-DDTHH:mm:ss.sssZ",
+    "final_message_id": "wamid-redacted",
+    "final_at": "YYYY-MM-DDTHH:mm:ss.sssZ",
+    "quote_attempts": 3,
+    "outcome": "handoff"
+  }
+}

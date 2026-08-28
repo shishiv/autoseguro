@@ -7,6 +7,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - Treat the official quote service as the sole price and acceptance authority. See `README.md` for its source and the failure contract.
 - Keep source code comment-free. Put rationale in `README.md`.
 - Do not fabricate `ai-logs/` or the real conversation under `examples/`; those artifacts must come from actual runs.
+- Treat the Meta channel as test-WABA-only. Use the guarded commands and rollback in `README.md`; preserve the app's canonical callback.
 
 ## Maintaining this file
 

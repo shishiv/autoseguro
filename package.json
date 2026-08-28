@@ -8,6 +8,9 @@
   },
   "scripts": {
     "chat": "node --env-file-if-exists=.env src/cli.ts",
+    "serve": "node --env-file-if-exists=.env src/server.ts",
+    "meta:provision": "node --env-file-if-exists=.env src/provision-meta.ts",
+    "meta:smoke": "node --env-file-if-exists=.env src/provision-meta.ts --smoke",
     "evaluate": "npm test && node --env-file-if-exists=.env src/evaluate.ts",
     "test": "node --test --test-concurrency=1 test/*.test.ts",
     "typecheck": "tsc --noEmit",

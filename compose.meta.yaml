@@ -1,0 +1,43 @@
+services:
+  quote-api:
+    build:
+      context: "https://github.com/namastexlabs/namastex-fde-challenge.git#52a006ca8ea571c3b9618be6886cb2ee20b6f6b8:quote-service"
+    environment:
+      QUOTE_FAILURE_RATE: "0.20"
+      QUOTE_SLOW_RATE: "0.10"
+      QUOTE_SLOW_SECONDS: "8"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  autoseguro:
+    build: .
+    environment:
+      LLM_BASE_URL: "${LLM_BASE_URL:?}"
+      LLM_API_KEY: "${LLM_API_KEY:?}"
+      LLM_MODEL: "${LLM_MODEL:?}"
+      LLM_TIMEOUT_MS: "${LLM_TIMEOUT_MS:-30000}"
+      QUOTE_API_URL: "http://quote-api:8000"
+      QUOTE_TIMEOUT_MS: "${QUOTE_TIMEOUT_MS:-3000}"
+      QUOTE_MAX_ATTEMPTS: "${QUOTE_MAX_ATTEMPTS:-3}"
+      META_WABA_ID: "${META_WABA_ID:?}"
+      META_PHONE_NUMBER_ID: "${META_PHONE_NUMBER_ID:?}"
+      META_ACCESS_TOKEN: "${META_ACCESS_TOKEN:?}"
+      META_APP_SECRET: "${META_APP_SECRET:?}"
+      META_VERIFY_TOKEN: "${META_VERIFY_TOKEN:?}"
+      META_ALLOWED_RECIPIENT: "${META_ALLOWED_RECIPIENT:?}"
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:?}"
+    ports:
+      - "127.0.0.1:${AUTOSEGURO_PORT:-3000}:3000"
+    depends_on:
+      quote-api:
+        condition: service_healthy
+    volumes:
+      - autoseguro-data:/data
+    restart: unless-stopped
+
+volumes:
+  autoseguro-data:

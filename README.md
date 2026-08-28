@@ -1,6 +1,6 @@
 # AutoSeguro
 
-Agente de vendas de seguro auto por uma CLI que simula WhatsApp. Ele coleta os cinco campos obrigatórios, inicia a cotação em segundo plano e mantém a conversa disponível enquanto a API instável trabalha.
+Agente de vendas de seguro auto com canais CLI e WhatsApp Cloud API. Ele coleta os cinco campos obrigatórios, inicia a cotação em segundo plano e mantém a conversa disponível enquanto a API instável trabalha.
 
 A API oficial é a única autoridade de preço e aceitação. O agente não calcula prêmio, franquia, carência ou pró-rata.
 
@@ -82,6 +82,7 @@ Cada retry preserva o `quote_request_id`, também enviado como `X-Request-ID`. O
 - npm
 - Docker, ou Python 3.10+ com `uv`
 - chave do Ollama Cloud, ou outro endpoint OpenAI-compatible
+- para o canal real, um domínio HTTPS isolado e credenciais do app Meta
 
 ### 1. Suba a API oficial
 
@@ -130,6 +131,14 @@ LLM_API_KEY=sua-chave-do-Ollama-Cloud
 LLM_MODEL=deepseek-v4-flash:0731
 LLM_TIMEOUT_MS=30000
 QUOTE_API_URL=http://127.0.0.1:8000
+META_APP_ID=
+META_WABA_ID=917767274033519
+META_PHONE_NUMBER_ID=946560951879475
+META_ACCESS_TOKEN=
+META_APP_SECRET=
+META_VERIFY_TOKEN=
+META_ALLOWED_RECIPIENT=
+PUBLIC_BASE_URL=https://autoseguro.example.com
 ```
 
 O exemplo usa o endpoint OpenAI-compatible do [Ollama Cloud](https://docs.ollama.com/api/openai-compatibility). As variáveis `LLM_*` aceitam outro provedor compatível.
@@ -162,6 +171,66 @@ Estado e auditoria ficam em:
 
 Use `STATE_DIR` e `AUDIT_LOG_PATH` para trocar os caminhos.
 
+## Canal WhatsApp isolado
+
+O servidor usa somente `node:http` e expõe `GET /health`, `GET /webhook` para o challenge do Meta e `POST /webhook` para eventos. Inicie-o com:
+
+```bash
+npm run serve
+```
+
+O `POST` calcula `X-Hub-Signature-256` sobre os bytes recebidos e compara o HMAC-SHA256 antes de interpretar JSON. Um evento válido entra em disco antes do HTTP 200. LLM, cotação, retries e envios ao Graph API rodam depois da resposta. O adaptador converte texto para `IncomingMessage` e entrega tudo ao mesmo `AutoSeguroAgent` usado pela CLI. Qualquer mídia sem texto segue para o handoff explícito já existente.
+
+O processo aceita apenas o WABA e o Phone Number ID de teste fixados nesta integração. `META_ALLOWED_RECIPIENT` aceita um único telefone, normalizado para dígitos. Eventos de outro WABA, número ou remetente falham fechados. `PUBLIC_BASE_URL` exige HTTPS e não pode usar `api.triangulotec.com.br`. O adaptador não contém chamada capaz de alterar o callback padrão do app.
+
+O intake persiste o `wamid` original e cifra telefone e texto com AES-256-GCM derivado de `META_APP_SECRET`. Após a entrega, apaga o payload cifrado e conserva só IDs, horários e falhas seguras. O token e corpos de mensagens não entram em logs. O estado, o intake e a auditoria usam arquivos `0600` em `.runtime/` ou no volume privado. A outbox continua pelo menos uma vez: o ID retornado pelo Meta é salvo antes de marcar a mensagem entregue, então um reinício recupera o envio sem perder a cotação ou o handoff.
+
+### Deploy separado
+
+[`compose.meta.yaml`](compose.meta.yaml) sobe dois serviços isolados: este servidor e o quote service oficial, sem alterar seu código. O build do serviço oficial está preso ao commit documentado no Compose. A instabilidade continua em `20%` de falhas, `10%` de chamadas lentas e 8 segundos de atraso.
+
+```bash
+docker compose --env-file .env -f compose.meta.yaml up -d --build
+```
+
+Publique somente a porta 3000 do serviço `autoseguro` atrás de TLS no domínio de `PUBLIC_BASE_URL`, por exemplo `autoseguro.triangulotec.com.br`. Use host, serviço, volume e rota separados do processador TEC. O quote service fica apenas na rede interna do Compose.
+
+### Assinatura e override do WABA
+
+O contrato foi conferido nas páginas primárias do Meta, atualizadas em junho de 2026: [Managing webhooks](https://developers.facebook.com/documentation/business-messaging/whatsapp/solution-providers/manage-webhooks) e [Webhook overrides](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/override/). A ordem exigida é assinar o app com `POST /<WABA_ID>/subscribed_apps`, confirmar a assinatura e só então repetir o `POST` com `override_callback_uri` e `verify_token`. O override de WABA cobre `messages`; eventos de template e conta continuam no callback padrão do app.
+
+O comando é dry-run por padrão. Ele consulta o WABA e o callback do app, mascara IDs e não imprime token ou verify token:
+
+```bash
+npm run meta:provision
+```
+
+Depois da aprovação explícita do firstmate e do health check público:
+
+```bash
+npm run meta:provision -- --apply
+npm run meta:smoke
+```
+
+`--apply` recusa qualquer ID fora da conta e do número de teste, preserva o callback padrão `https://api.triangulotec.com.br/webhook` e relê ambas as configurações como pós-condição. O smoke verifier é somente leitura: confere health, challenge, assinatura, override e callback padrão.
+
+Rollback exato, também dry-run por padrão:
+
+```bash
+npm run meta:provision -- --rollback
+npm run meta:provision -- --rollback --apply
+```
+
+O rollback primeiro faz `POST /<WABA_ID>/subscribed_apps` sem corpo para remover o override, confirma sua ausência, depois faz `DELETE /<WABA_ID>/subscribed_apps` e confirma que apenas a assinatura do app no WABA de teste sumiu. Ele não consulta nem altera o WABA canônico.
+
+### Prova WhatsApp
+
+O número de teste pode permanecer `NOT_VERIFIED` e com qualidade `UNKNOWN`. O Meta só aceita o destinatário de teste previamente autorizado. Faça o round trip manualmente pelo WhatsApp desse destinatário; `wacli` é opcional e nunca é necessário para instalar, provisionar ou concluir o teste.
+
+Registre somente horários, IDs truncados ou hashados, contagem de tentativas e resultado. [`docs/meta-live-evidence.example.json`](docs/meta-live-evidence.example.json) define o formato sem telefone, texto ou token. A prova deve mostrar a confirmação imediata e, em execuções isoladas, uma cotação tardia e um handoff após três falhas. Um volume descartável por cenário evita misturar estados sem tocar tráfego de produção.
+
+Esse round trip prova transporte, isolamento e retomada. Ele não substitui a avaliação estatística de 100 conversas em [`examples/evaluation/`](examples/evaluation/), que mede retries, duplicação, latência e ausência de preço inventado sob carga reproduzível.
+
 ## Avaliação reproduzível
 
 Reinicie a API oficial com seed 42 antes do comando. A avaliação executa os cenários forçados, 100 conversas contra a API real e 20 exemplos de linguagem no Ollama Cloud:
@@ -192,6 +261,8 @@ npm run lint
 npm run check
 ```
 
+`npm test` também executa um fake Meta local de ponta a ponta. O teste mantém a cotação bloqueada, prova que o webhook responde antes dela e depois valida o envio assíncrono.
+
 A suíte determinística cobre:
 
 - cotação imediata em background e outbox durável;
@@ -208,21 +279,31 @@ A suíte determinística cobre:
 - retomada de coleta e retomada de job após reinício;
 - mídia sem transcrição;
 - validação antes da API;
-- ausência de CPF, telefone, e-mail e CEP completo na auditoria.
+- ausência de CPF, telefone, e-mail e CEP completo na auditoria;
+- challenge e health do webhook Meta;
+- HMAC ausente ou inválido antes do parse;
+- payload malformado e `wamid` duplicado;
+- allowlist e mídia não suportada;
+- falha outbound persistida sem corpo ou token;
+- pending imediato, cotação tardia e handoff tardio;
+- replay da outbox após reinício.
 
 ## Arquitetura
 
-A aplicação é uma única fatia vertical. Não há servidor web, monorepo, Redis ou fila externa.
+A aplicação segue como uma única fatia vertical. O canal Meta adapta HTTP e Graph API ao núcleo existente; não duplica regras de cotação, Redis ou fila externa.
 
 ```text
-src/cli.ts            canal interativo, replay e entrega da outbox
-src/agent.ts          estado, jobs em background, deduplicação e handoff
-src/validation.ts     validação dos candidatos antes da API
-src/quote-client.ts   timeout, retry, cancelamento e contrato da cotação
-src/llm.ts            cliente OpenAI-compatible para extração e redação
-src/persistence.ts    estado atômico em JSON e auditoria JSONL
-src/privacy.ts        remoção de CPF, telefone e e-mail; máscara de CEP
-src/evaluate.ts       avaliação real com concorrência limitada
+src/cli.ts             canal interativo, replay e entrega da outbox
+src/server.ts          composição e processo HTTP do canal Meta
+src/meta.ts            HMAC, payload Meta, intake cifrado e Graph API
+src/provision-meta.ts  provisionamento guardado, rollback e smoke read-only
+src/agent.ts           estado, jobs em background, deduplicação e handoff
+src/validation.ts      validação dos candidatos antes da API
+src/quote-client.ts    timeout, retry, cancelamento e contrato da cotação
+src/llm.ts             cliente OpenAI-compatible para extração e redação
+src/persistence.ts     estado atômico em JSON e auditoria JSONL
+src/privacy.ts         remoção de CPF, telefone e e-mail; máscara de CEP
+src/evaluate.ts        avaliação real com concorrência limitada
 ```
 
 **LLM:** extrai candidatos e dá linguagem natural às perguntas de coleta. O núcleo remove CPF, telefone e e-mail antes da chamada. A saída passa por validação em runtime. O LLM classifica intenção; regras determinísticas decidem o efeito.
@@ -245,17 +326,17 @@ Cada conversa persiste:
 - `quote_request_id`, resultado ou motivo do handoff;
 - respostas terminais na outbox e `delivered_at`.
 
-A escrita usa arquivo temporário e `rename`. A outbox oferece entrega pelo menos uma vez: uma queda depois de imprimir e antes de gravar `delivered_at` pode repetir a resposta, mas não cria outra cotação.
+A escrita usa arquivo temporário e `rename`. A outbox oferece entrega pelo menos uma vez. No canal Meta, o adaptador grava o ID outbound antes de confirmar a entrega na outbox; um reinício usa o recibo já salvo para não reenviar. Uma queda entre a aceitação pelo Graph API e a gravação desse recibo ainda pode duplicar a mensagem.
 
 Há um evento JSON por mensagem e por chamada HTTP. Todo evento possui `conversation_id`, `message_id`, `timestamp`, `stage`, campos com origem, `quote_request_id`, `quote_status`, tentativa, latência, status HTTP, resultado e motivo de handoff.
 
-O corpo bruto da mensagem não entra no estado nem na auditoria. CPF, telefone e e-mail são removidos antes do LLM e antes de gravar qualquer evento. O CEP aparece mascarado na auditoria. O estado contém só os cinco campos necessários, usa permissão `0600` e fica fora do Git.
+O corpo bruto da mensagem não entra no estado nem na auditoria. O intake durável guarda telefone e texto apenas cifrados até concluir a entrega. CPF, telefone e e-mail são removidos antes do LLM e antes de gravar qualquer evento. O CEP aparece mascarado na auditoria. O estado contém só os cinco campos necessários, usa permissão `0600` e fica fora do Git.
 
 O dataset sintético oficial serviu apenas para conferir formas de expressão, formatos sensíveis e mídia sem transcrição. Nenhum registro do dataset foi copiado.
 
 ## Trade-offs
 
-- O processo mantém um registro de jobs por conversa e usa arquivos locais. Isso basta para a CLI. Múltiplas réplicas exigiriam banco, lock distribuído e outbox transacional.
+- O processo mantém um registro de jobs por conversa e usa arquivos locais. Isso basta para uma réplica piloto. Múltiplas réplicas exigiriam banco, lock distribuído e outbox transacional.
 - Os três IDs de plano do contrato são validados localmente. Uma mudança no catálogo exigirá atualizar a lista ou consultar `GET /planos`.
 - Respostas com preço, recusa e handoff são determinísticas. O LLM não pode alterar valor nem decisão.
 - Erro de rede genérico não recebe retry, pois a política permite apenas timeout, `500`, `502` e `503`.
