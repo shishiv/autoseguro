@@ -30,8 +30,6 @@ services:
       META_VERIFY_TOKEN: "${META_VERIFY_TOKEN:?}"
       META_ALLOWED_RECIPIENT: "${META_ALLOWED_RECIPIENT:?}"
       PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:?}"
-    ports:
-      - "127.0.0.1:${AUTOSEGURO_PORT:-3000}:3000"
     depends_on:
       quote-api:
         condition: service_healthy

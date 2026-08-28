@@ -193,7 +193,7 @@ O intake persiste o `wamid` original e cifra telefone e texto com AES-256-GCM de
 docker compose --env-file .env -f compose.meta.yaml up -d --build
 ```
 
-Publique somente a porta 3000 do serviço `autoseguro` atrás de TLS no domínio de `PUBLIC_BASE_URL`, por exemplo `autoseguro.triangulotec.com.br`. Use host, serviço, volume e rota separados do processador TEC. O quote service fica apenas na rede interna do Compose.
+Roteie somente a porta interna 3000 do serviço `autoseguro` atrás de TLS no domínio de `PUBLIC_BASE_URL`, por exemplo `autoseguro.triangulotec.com.br`. Não publique uma porta do host. Use projeto, serviço, volume e rota separados do processador TEC. O quote service fica apenas na rede interna do Compose.
 
 ### Assinatura e override do WABA
 
