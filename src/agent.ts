@@ -82,10 +82,14 @@ function terminalReply(state: ConversationState): AgentReply {
 }
 
 function attemptOutcome(attempt: QuoteAttempt): Outcome {
-  if (attempt.http_status === 422) {
+  const status = attempt.http_status;
+  if (status !== null && status >= 200 && status < 300) {
+    return "resolved";
+  }
+  if (status === 422) {
     return "refused";
   }
-  if (attempt.http_status === 400 || (attempt.http_status !== null && attempt.http_status >= 400 && attempt.http_status < 500)) {
+  if (status !== null && status >= 400 && status < 500) {
     return "handoff";
   }
   return "awaiting_data";

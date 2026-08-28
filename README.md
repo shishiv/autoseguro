@@ -75,13 +75,13 @@ cp .env.example .env
 Preencha sem commitar o arquivo `.env`:
 
 ```dotenv
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_API_KEY=sua-chave
-LLM_MODEL=seu-modelo
+LLM_BASE_URL=https://ollama.com/v1
+LLM_API_KEY=sua-chave-do-Ollama-Cloud
+LLM_MODEL=deepseek-v4-flash:0731
 QUOTE_API_URL=http://127.0.0.1:8000
 ```
 
-`LLM_BASE_URL`, `LLM_API_KEY` e `LLM_MODEL` permitem usar qualquer provedor com o contrato OpenAI Chat Completions.
+O exemplo usa o endpoint OpenAI-compatible do [Ollama Cloud](https://docs.ollama.com/api/openai-compatibility). As três variáveis `LLM_*` continuam configuráveis para outro provedor compatível.
 
 ### 3. Converse pela CLI
 
@@ -201,4 +201,4 @@ O dataset sintético oficial foi usado apenas para conferir formatos de PII e o 
 - Respostas de cotação, recusa e handoff usam texto determinístico. Isso impede que o LLM altere preço ou decisão. O LLM só dá linguagem natural às perguntas de coleta.
 - Erro de rede genérico não recebe retry porque a política permite retry apenas para timeout, `500`, `502` e `503`.
 
-A conversa real e seu recorte de auditoria ficam em `examples/`. A pasta `ai-logs/` contém apenas a nota de entrega até o responsável adicionar os históricos reais das ferramentas de IA.
+A execução real está em [`examples/conversation-real.md`](examples/conversation-real.md), com o recorte estruturado em [`examples/conversation-real.audit.jsonl`](examples/conversation-real.audit.jsonl). A pasta `ai-logs/` contém apenas a nota de entrega até o responsável adicionar os históricos reais das ferramentas de IA.
