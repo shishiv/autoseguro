@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
 import { maskCep, redactSensitiveText } from "./privacy.ts";
 import type {
   AuditEvent,
@@ -27,17 +27,35 @@ function parseState(raw: string, conversationId: string): ConversationState {
   const value: unknown = JSON.parse(raw);
   if (
     !isRecord(value) ||
-    value.version !== 1 ||
+    value.version !== 2 ||
     value.conversation_id !== conversationId ||
     typeof value.stage !== "string" ||
     !stages.has(value.stage) ||
     !isRecord(value.fields) ||
     !isRecord(value.processed_messages) ||
+    !Array.isArray(value.quote_jobs) ||
+    !Array.isArray(value.outbox) ||
     typeof value.ambiguity_count !== "number"
   ) {
     throw new Error(`Estado inválido para ${conversationId}`);
   }
   return value as unknown as ConversationState;
+}
+
+function initialState(conversationId: string): ConversationState {
+  return {
+    version: 2,
+    conversation_id: conversationId,
+    stage: "collecting",
+    fields: {},
+    ambiguity_count: 0,
+    processed_messages: {},
+    active_quote_request_id: null,
+    quote_jobs: [],
+    outbox: [],
+    quote: null,
+    handoff_reason: null,
+  };
 }
 
 export class FileConversationStore {
@@ -46,6 +64,7 @@ export class FileConversationStore {
   constructor(directory: string) {
     this.directory = directory;
   }
+
   async load(conversationId: string): Promise<ConversationState> {
     const path = statePath(this.directory, conversationId);
     try {
@@ -54,14 +73,7 @@ export class FileConversationStore {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
       }
-      return {
-        version: 1,
-        conversation_id: conversationId,
-        stage: "collecting",
-        fields: {},
-        ambiguity_count: 0,
-        processed_messages: {},
-      };
+      return initialState(conversationId);
     }
   }
 
@@ -100,6 +112,7 @@ export class AuditLog {
   constructor(path: string) {
     this.path = path;
   }
+
   async append(event: AuditEvent): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true });
     const line = redactSensitiveText(JSON.stringify(event));

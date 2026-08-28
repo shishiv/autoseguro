@@ -45,7 +45,7 @@ function parseProRata(value: unknown): ProRataPayment | null {
   if (
     !isFiniteNumber(value.dias_no_mes) ||
     !isFiniteNumber(value.dias_cobrados) ||
-    !isFiniteNumber(value.valor_primeiro_pagamento)
+    !isMoney(value.valor_primeiro_pagamento)
   ) {
     return null;
   }
@@ -146,28 +146,37 @@ export class QuoteClient implements QuoteClientPort {
     payload: QuotePayload,
     quoteRequestId: string,
     onAttempt: (attempt: QuoteAttempt) => Promise<void>,
+    completedAttempts = 0,
+    signal?: AbortSignal,
   ): Promise<QuoteResult> {
     const attempts: QuoteAttempt[] = [];
-    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
-      const result = await this.call(payload, quoteRequestId, attempt);
+    for (let attempt = completedAttempts + 1; attempt <= this.maxAttempts; attempt += 1) {
+      if (signal?.aborted) {
+        return { kind: "cancelled", attempts };
+      }
+      const result = await this.call(payload, quoteRequestId, attempt, signal);
+      const classified = await this.classify(result, completedAttempts + attempts.length + 1, attempts);
+      result.record.will_retry = classified === null;
       attempts.push(result.record);
       await onAttempt(result.record);
-      const classified = await this.classify(result, attempts);
       if (classified) {
         return classified;
       }
       await this.backoff(attempt);
     }
-    return { kind: "handoff", reason: "quote_service_unavailable", attempts };
+    return { kind: "handoff", reason: "quote_attempts_exhausted", attempts };
   }
 
   private async call(
     payload: QuotePayload,
     quoteRequestId: string,
     attempt: number,
+    signal?: AbortSignal,
   ): Promise<AttemptResponse> {
     const started = performance.now();
     try {
+      const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
+      const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
       const response = await this.fetcher(`${this.baseUrl}/quote`, {
         method: "POST",
         headers: {
@@ -175,7 +184,7 @@ export class QuoteClient implements QuoteClientPort {
           "x-request-id": quoteRequestId,
         },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: requestSignal,
       });
       return {
         response,
@@ -184,15 +193,18 @@ export class QuoteClient implements QuoteClientPort {
           latency_ms: Math.round(performance.now() - started),
           http_status: response.status,
           failure_kind: null,
+          will_retry: false,
         },
       };
     } catch (error) {
+      const failureKind = signal?.aborted ? "cancelled" : isTimeout(error) ? "timeout" : "network";
       return {
         record: {
           attempt,
           latency_ms: Math.round(performance.now() - started),
           http_status: null,
-          failure_kind: isTimeout(error) ? "timeout" : "network",
+          failure_kind: failureKind,
+          will_retry: false,
         },
       };
     }
@@ -200,10 +212,15 @@ export class QuoteClient implements QuoteClientPort {
 
   private async classify(
     result: AttemptResponse,
-    attempts: QuoteAttempt[],
+    totalAttemptCount: number,
+    previousAttempts: QuoteAttempt[],
   ): Promise<QuoteResult | null> {
+    const attempts = [...previousAttempts, result.record];
     if (!result.response) {
-      return result.record.failure_kind === "timeout" && attempts.length < this.maxAttempts
+      if (result.record.failure_kind === "cancelled") {
+        return { kind: "cancelled", attempts };
+      }
+      return result.record.failure_kind === "timeout" && totalAttemptCount < this.maxAttempts
         ? null
         : {
             kind: "handoff",
@@ -221,7 +238,7 @@ export class QuoteClient implements QuoteClientPort {
       return { kind: "refused", reason: await errorReason(result.response), attempts };
     }
     if (retryableStatuses.has(result.response.status)) {
-      return attempts.length < this.maxAttempts
+      return totalAttemptCount < this.maxAttempts
         ? null
         : { kind: "handoff", reason: "quote_service_unavailable", attempts };
     }
@@ -233,7 +250,7 @@ export class QuoteClient implements QuoteClientPort {
   }
 
   private async backoff(attempt: number): Promise<void> {
-    const delay = this.baseBackoffMs * 2 ** (attempt - 1) + Math.floor(this.random() * this.jitterMs);
-    await this.sleep(delay);
+    const milliseconds = this.baseBackoffMs * 2 ** (attempt - 1) + Math.floor(this.random() * this.jitterMs);
+    await this.sleep(milliseconds);
   }
 }

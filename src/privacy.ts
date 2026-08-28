@@ -1,6 +1,6 @@
 const emailPattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu;
-const cpfPattern = /(?<!\d)\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2}(?!\d)/gu;
-const phonePattern = /(?<!\d)(?:\+?55[\s.-]*)?(?:\(\d{2}\)|\d{2})[\s.-]*9?\d{4}[\s.-]*\d{4}(?!\d)/gu;
+const cpfPattern = /(?<![A-Za-z0-9-])\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2}(?![A-Za-z0-9-])/gu;
+const phonePattern = /(?<![A-Za-z0-9-])(?:\+?55[\s.-]*)?(?:\(\d{2}\)|\d{2})[\s.-]*9?\d{4}[\s.-]*\d{4}(?![A-Za-z0-9-])/gu;
 
 export function redactSensitiveText(value: string): string {
   return value

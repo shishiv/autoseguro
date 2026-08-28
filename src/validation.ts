@@ -1,12 +1,13 @@
 import type {
   CandidateFields,
   CollectedFields,
+  FieldOrigin,
   QuotePayload,
   RequiredFieldName,
 } from "./types.ts";
 import { requiredFieldNames } from "./types.ts";
 
-interface ValidatedValues {
+export interface ValidatedValues {
   plano?: string;
   idade?: number;
   veiculo_ano?: number;
@@ -104,14 +105,22 @@ export function mergeFields(
   fields: CollectedFields,
   values: ValidatedValues,
   messageId: string,
+  source: FieldOrigin["source"] = "llm",
 ): CollectedFields {
   const merged = { ...fields };
   for (const [name, value] of Object.entries(values)) {
     Object.assign(merged, {
-      [name]: { value, origin: { message_id: messageId, source: "llm" } },
+      [name]: { value, origin: { message_id: messageId, source } },
     });
   }
   return merged;
+}
+
+export function hasFieldChanges(fields: CollectedFields, values: ValidatedValues): boolean {
+  return Object.entries(values).some(([name, value]) => {
+    const current = fields[name as RequiredFieldName];
+    return current === undefined || current.value !== value;
+  });
 }
 
 export function missingFields(fields: CollectedFields): RequiredFieldName[] {

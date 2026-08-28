@@ -1,14 +1,14 @@
-import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { createInterface } from "node:readline/promises";
+import { readFile } from "node:fs/promises";
 import { stdin, stdout } from "node:process";
+import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import { AutoSeguroAgent } from "./agent.ts";
 import { OpenAICompatibleLlm } from "./llm.ts";
 import { AuditLog, FileConversationStore } from "./persistence.ts";
 import { redactSensitiveText } from "./privacy.ts";
 import { QuoteClient } from "./quote-client.ts";
-import type { IncomingMessage, MessageType } from "./types.ts";
+import type { IncomingMessage, MessageType, OutboxMessage } from "./types.ts";
 
 interface ReplayRecord {
   conversation_id?: unknown;
@@ -47,6 +47,29 @@ function readReplayRecord(line: string, fallbackConversationId: string, index: n
   };
 }
 
+function printAsyncReply(message: OutboxMessage): void {
+  console.log(`AutoSeguro [assíncrono]: ${message.text}`);
+}
+
+async function emitReady(agent: AutoSeguroAgent, conversationId: string): Promise<void> {
+  await agent.waitForIdle(conversationId);
+  await agent.deliverOutbox(conversationId, printAsyncReply);
+}
+
+function watchOutbox(agent: AutoSeguroAgent, conversationId: string): void {
+  void emitReady(agent, conversationId).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Erro assíncrono: ${redactSensitiveText(message)}`);
+  });
+}
+
+async function prepareConversation(agent: AutoSeguroAgent, conversationId: string): Promise<void> {
+  await agent.deliverOutbox(conversationId, printAsyncReply);
+  if (await agent.resume(conversationId)) {
+    watchOutbox(agent, conversationId);
+  }
+}
+
 async function replay(path: string, conversationId: string, agent: AutoSeguroAgent): Promise<void> {
   const lines = (await readFile(path, "utf8")).split(/\r?\n/u).filter((line) => line.trim() !== "");
   for (const [index, line] of lines.entries()) {
@@ -58,6 +81,7 @@ async function replay(path: string, conversationId: string, agent: AutoSeguroAge
     const reply = await agent.handle(message);
     console.log(`AutoSeguro: ${reply.text}`);
   }
+  await emitReady(agent, conversationId);
 }
 
 async function interactive(conversationId: string, agent: AutoSeguroAgent): Promise<void> {
@@ -67,6 +91,7 @@ async function interactive(conversationId: string, agent: AutoSeguroAgent): Prom
     while (true) {
       const text = await terminal.question("Você: ");
       if (text.trim().toLowerCase() === "sair") {
+        await emitReady(agent, conversationId);
         return;
       }
       const reply = await agent.handle({
@@ -76,6 +101,7 @@ async function interactive(conversationId: string, agent: AutoSeguroAgent): Prom
         text,
       });
       console.log(`AutoSeguro: ${reply.text}`);
+      watchOutbox(agent, conversationId);
     }
   } finally {
     terminal.close();
@@ -110,6 +136,7 @@ async function main(): Promise<void> {
       maxAttempts: Number(process.env.QUOTE_MAX_ATTEMPTS ?? "3"),
     }),
   );
+  await prepareConversation(agent, conversationId);
   if (values.replay) {
     await replay(values.replay, conversationId, agent);
     return;

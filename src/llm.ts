@@ -39,7 +39,7 @@ function parseUnderstanding(content: string): LanguageUnderstanding {
   const parsed = parseObject(content);
   const fields = isRecord(parsed.fields) ? parsed.fields : {};
   const intent = parsed.intent;
-  if (!new Set(["continue", "human", "unsupported"]).has(String(intent))) {
+  if (!new Set(["continue", "status", "information", "human", "unsupported"]).has(String(intent))) {
     throw new Error("O LLM retornou uma intenção inválida");
   }
   if (typeof parsed.ambiguous !== "boolean") {
@@ -70,7 +70,7 @@ export class OpenAICompatibleLlm implements LanguageModel {
     this.baseUrl = config.baseUrl.replace(/\/$/u, "");
     this.apiKey = config.apiKey;
     this.model = config.model;
-    this.timeoutMs = config.timeoutMs ?? 15_000;
+    this.timeoutMs = config.timeoutMs ?? 30_000;
     this.fetcher = fetcher;
   }
 
@@ -78,10 +78,11 @@ export class OpenAICompatibleLlm implements LanguageModel {
     const baseUrl = env.LLM_BASE_URL?.trim();
     const apiKey = env.LLM_API_KEY?.trim();
     const model = env.LLM_MODEL?.trim();
-    if (!baseUrl || !apiKey || !model) {
-      throw new Error("Configure LLM_BASE_URL, LLM_API_KEY e LLM_MODEL");
+    const timeoutMs = Number(env.LLM_TIMEOUT_MS ?? "30000");
+    if (!baseUrl || !apiKey || !model || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new Error("Configure LLM_BASE_URL, LLM_API_KEY, LLM_MODEL e um LLM_TIMEOUT_MS válido");
     }
-    return new OpenAICompatibleLlm({ baseUrl, apiKey, model });
+    return new OpenAICompatibleLlm({ baseUrl, apiKey, model, timeoutMs });
   }
 
   async understand(input: UnderstandingInput): Promise<LanguageUnderstanding> {
@@ -90,7 +91,8 @@ export class OpenAICompatibleLlm implements LanguageModel {
       "Retorne apenas JSON com fields, intent e ambiguous.",
       "fields aceita plano, idade, veiculo_ano, cep e data_inicio.",
       "Normalize plano para essencial, completo ou premium e data para YYYY-MM-DD.",
-      "Use null quando ausente. Nunca infira. intent é continue, human ou unsupported.",
+      "Use null quando ausente. Nunca infira.",
+      "intent é continue, status para andamento, information para plano ou cobertura, human para pedido humano, ou unsupported.",
       "ambiguous só é true quando o texto traz um dado essencial conflitante ou incerto.",
     ].join(" ");
     const user = JSON.stringify({

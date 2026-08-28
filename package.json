@@ -8,6 +8,7 @@
   },
   "scripts": {
     "chat": "node --env-file-if-exists=.env src/cli.ts",
+    "evaluate": "npm test && node --env-file-if-exists=.env src/evaluate.ts",
     "test": "node --test --test-concurrency=1 test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src test",
