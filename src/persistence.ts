@@ -10,7 +10,7 @@ import type {
 } from "./types.ts";
 
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
-const stages = new Set(["collecting", "quoting", "resolved", "handoff"]);
+const stages = new Set(["collecting", "quoting", "resolved", "handoff", "closed"]);
 
 function statePath(directory: string, conversationId: string): string {
   if (!identifierPattern.test(conversationId)) {
@@ -23,28 +23,44 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isStateIdentity(value: unknown, conversationId: string): value is Record<string, unknown> {
+  return isRecord(value)
+    && (value.version === 2 || value.version === 3)
+    && value.conversation_id === conversationId
+    && typeof value.stage === "string"
+    && stages.has(value.stage);
+}
+
+function hasStateCollections(value: Record<string, unknown>): boolean {
+  return isRecord(value.fields)
+    && isRecord(value.processed_messages)
+    && Array.isArray(value.quote_jobs)
+    && Array.isArray(value.outbox)
+    && typeof value.ambiguity_count === "number";
+}
+
+function csatRating(value: unknown): "great" | "regular" | "bad" | null {
+  return value === "great" || value === "regular" || value === "bad" ? value : null;
+}
+
 function parseState(raw: string, conversationId: string): ConversationState {
   const value: unknown = JSON.parse(raw);
-  if (
-    !isRecord(value) ||
-    value.version !== 2 ||
-    value.conversation_id !== conversationId ||
-    typeof value.stage !== "string" ||
-    !stages.has(value.stage) ||
-    !isRecord(value.fields) ||
-    !isRecord(value.processed_messages) ||
-    !Array.isArray(value.quote_jobs) ||
-    !Array.isArray(value.outbox) ||
-    typeof value.ambiguity_count !== "number"
-  ) {
+  if (!isStateIdentity(value, conversationId) || !hasStateCollections(value)) {
     throw new Error(`Estado inválido para ${conversationId}`);
   }
-  return value as unknown as ConversationState;
+  return {
+    ...value,
+    version: 3,
+    greeted: value.greeted === true,
+    awaiting_csat: value.awaiting_csat === true,
+    csat_rating: csatRating(value.csat_rating),
+    csat_timestamp: typeof value.csat_timestamp === "string" ? value.csat_timestamp : null,
+  } as ConversationState;
 }
 
 function initialState(conversationId: string): ConversationState {
   return {
-    version: 2,
+    version: 3,
     conversation_id: conversationId,
     stage: "collecting",
     fields: {},
@@ -55,6 +71,10 @@ function initialState(conversationId: string): ConversationState {
     outbox: [],
     quote: null,
     handoff_reason: null,
+    greeted: false,
+    awaiting_csat: false,
+    csat_rating: null,
+    csat_timestamp: null,
   };
 }
 

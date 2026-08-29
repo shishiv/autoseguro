@@ -635,6 +635,7 @@ test("auditoria mascara PII e registra o ciclo assíncrono", async (context) => 
         "attempt",
         "collected_fields",
         "conversation_id",
+        "csat_rating",
         "event",
         "failure_kind",
         "handoff_reason",
@@ -712,3 +713,68 @@ test("redação de PII preserva IDs de correlação", () => {
   assert.equal(redactSensitiveText("CPF 123.456.789-00"), "CPF <cpf_redacted>");
   assert.equal(redactSensitiveText("Telefone +55 11 99999-8888"), "Telefone <phone_redacted>");
 });
+
+test("saúda uma vez e coleta um campo por vez com a lista de planos", async (context) => {
+  const harness = await makeDeferredHarness(context, [understanding({})]);
+  const first = await harness.agent.handle(message("Oi", "msg-greeting"));
+  assert.match(first.text, /Eu sou a AutoSeguro/u);
+  assert.deepEqual(first.interaction?.actions.map((action) => action.id), ["plan_essencial", "plan_completo", "plan_premium"]);
+  const plan = await harness.agent.handle({ ...message("Completo", "msg-plan"), action: "plan_completo" });
+  assert.match(plan.text, /Qual é a sua idade/u);
+  assert.doesNotMatch(plan.text, /Eu sou a AutoSeguro/u);
+  assert.equal((await harness.store.load("conversation-1")).fields.plano?.value, "completo");
+});
+
+test("novo orçamento e ajuda humana usam ações determinísticas", async (context) => {
+  const harness = await makeHarness(context, [understanding(completeFields())], () => ({ status: 200, body: successfulQuote() }));
+  await harness.agent.handle(message());
+  await collectTerminal(harness.agent);
+  const next = await harness.agent.handle({ ...message("Nova cotação", "msg-new"), action: "quote_new" });
+  assert.equal(next.interaction?.kind, "list");
+  const help = await harness.agent.handle({ ...message("Falar com uma pessoa", "msg-help"), action: "human_help" });
+  assert.equal(help.outcome, "handoff");
+  assert.equal((await harness.store.load("conversation-1")).awaiting_csat, false);
+});
+
+for (const [action, rating] of [["csat_great", "great"], ["csat_regular", "regular"], ["csat_bad", "bad"]] as const) {
+  test(`encerra uma cotação resolvida e persiste CSAT ${rating}`, async (context) => {
+    const harness = await makeHarness(context, [understanding(completeFields())], () => ({ status: 200, body: successfulQuote() }));
+    await harness.agent.handle(message());
+    await collectTerminal(harness.agent);
+    const question = await harness.agent.handle({ ...message("Encerrar atendimento", "msg-end"), action: "service_end" });
+    assert.deepEqual(question.interaction?.actions.map((item) => item.id), ["csat_great", "csat_regular", "csat_bad"]);
+    const thanks = await harness.agent.handle({ ...message(rating, `msg-${action}`), action });
+    assert.match(thanks.text, /Obrigado pela avaliação/u);
+    const state = await harness.store.load("conversation-1");
+    assert.equal(state.stage, "closed");
+    assert.equal(state.csat_rating, rating);
+    const events = (await readFile(harness.auditPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    assert.deepEqual(events.at(-1), expectCsat(rating));
+  });
+}
+
+function expectCsat(rating: "great" | "regular" | "bad"): Record<string, unknown> {
+  return {
+    event: "csat",
+    conversation_id: "conversation-1",
+    message_id: `msg-csat_${rating}`,
+    timestamp: "2026-08-28T12:00:00.000Z",
+    stage: "closed",
+    collected_fields: {
+      plano: { value: "completo", origin: { message_id: "msg-1", source: "llm" } },
+      idade: { value: 35, origin: { message_id: "msg-1", source: "llm" } },
+      veiculo_ano: { value: 2022, origin: { message_id: "msg-1", source: "llm" } },
+      cep: { value: "01***-***", origin: { message_id: "msg-1", source: "llm" } },
+      data_inicio: { value: "2026-09-01", origin: { message_id: "msg-1", source: "llm" } },
+    },
+    quote_request_id: "quote-request-1",
+    quote_status: "delivered",
+    attempt: null,
+    latency_ms: null,
+    http_status: null,
+    outcome: "resolved",
+    handoff_reason: null,
+    failure_kind: null,
+    csat_rating: rating,
+  };
+}

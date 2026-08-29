@@ -9,12 +9,13 @@ import {
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import type { IncomingMessage as HttpRequest, ServerResponse } from "node:http";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { URL } from "node:url";
 import { AutoSeguroAgent } from "./agent.ts";
 import { FileConversationStore } from "./persistence.ts";
-import type { AgentReply, IncomingMessage, MessageType, OutboxMessage } from "./types.ts";
+import type { ActionId, AgentReply, IncomingMessage, MessageType, OutboxMessage, ReplyInteraction } from "./types.ts";
 
-export const META_GRAPH_VERSION = "v26.0";
+export const META_GRAPH_VERSION = "v25.0";
 export const TEST_WABA_ID = "917767274033519";
 export const TEST_PHONE_NUMBER_ID = "946560951879475";
 
@@ -56,6 +57,7 @@ interface SealedPayload {
 interface IntakePayload {
   recipient: string;
   text: string;
+  action?: ActionId;
 }
 
 interface MetaIntakeRecord {
@@ -85,6 +87,8 @@ interface MetaGraphSuccessBody {
 interface MetaTransportOptions {
   now?: () => Date;
   retryMs?: number;
+  typingDelayMs?: number;
+  sleep?: (milliseconds: number) => Promise<void>;
   log?: (event: Record<string, unknown>) => void;
 }
 
@@ -123,10 +127,29 @@ function textMessage(value: Record<string, unknown>): string {
   return text.body;
 }
 
+const actionIds = new Set<ActionId>([
+  "quote_start", "plans_view", "human_help", "quote_new", "service_end",
+  "csat_great", "csat_regular", "csat_bad", "plan_essencial", "plan_completo", "plan_premium",
+]);
+
+function interactiveAction(value: Record<string, unknown>): { action: ActionId; text: string } | null {
+  if (value.type !== "interactive" || !isRecord(value.interactive)) {
+    return null;
+  }
+  const interactive = value.interactive;
+  const reply = interactive.type === "button_reply" ? interactive.button_reply : interactive.list_reply;
+  if (!isRecord(reply) || typeof reply.id !== "string" || typeof reply.title !== "string" || !actionIds.has(reply.id as ActionId)) {
+    throw new MetaWebhookError(400, "malformed_payload");
+  }
+  return { action: reply.id as ActionId, text: reply.title };
+}
+
 function messageType(value: Record<string, unknown>): MessageType {
-  const type = value.type;
-  if (type === "text" || type === "audio" || type === "image" || type === "document") {
-    return type;
+  if (value.type === "interactive") {
+    return "text";
+  }
+  if (value.type === "text" || value.type === "audio" || value.type === "image" || value.type === "document") {
+    return value.type;
   }
   return "document";
 }
@@ -139,6 +162,7 @@ function parseMessage(value: unknown, config: MetaRuntimeConfig): MetaIncoming {
   if (recipient !== config.allowedRecipient) {
     throw new MetaWebhookError(403, "recipient_not_allowlisted");
   }
+  const action = interactiveAction(value);
   const type = messageType(value);
   const hash = digest(value.id);
   return {
@@ -148,7 +172,8 @@ function parseMessage(value: unknown, config: MetaRuntimeConfig): MetaIncoming {
       conversation_id: `wa-${digest(recipient)}`,
       message_id: `wamid-${hash}`,
       message_type: type,
-      text: type === "text" ? textMessage(value) : `[unsupported:${String(value.type ?? "unknown")}]`,
+      text: action?.text ?? (type === "text" ? textMessage(value) : `[unsupported:${String(value.type ?? "unknown")}]`),
+      ...(action ? { action: action.action } : {}),
     },
   };
 }
@@ -232,10 +257,64 @@ export class MetaGraphClient {
     this.fetcher = fetcher;
   }
 
+  async sendPresence(messageId: string): Promise<void> {
+    const body = await this.post({
+      messaging_product: "whatsapp",
+      status: "read",
+      message_id: messageId,
+      typing_indicator: { type: "text" },
+    }, 1_000) as { success?: unknown };
+    if (body.success !== true) {
+      throw new MetaSendError(200, "missing_success");
+    }
+  }
+
   async sendText(recipient: string, text: string): Promise<string> {
+    return this.send(recipient, { type: "text", text: { body: text } });
+  }
+
+  async sendInteractive(recipient: string, text: string, interaction: ReplyInteraction): Promise<string> {
+    const interactive = interaction.kind === "buttons"
+      ? {
+        type: "button",
+        body: { text },
+        action: { buttons: interaction.actions.map((action) => ({ type: "reply", reply: action })) },
+      }
+      : {
+        type: "list",
+        body: { text },
+        action: {
+          button: interaction.button_label ?? "Opções",
+          sections: [{
+            title: "Planos",
+            rows: interaction.actions.map((action) => {
+              const [title, description] = action.title.split(" — ");
+              return { id: action.id, title, description };
+            }),
+          }],
+        },
+      };
+    return this.send(recipient, { type: "interactive", interactive });
+  }
+
+  private async send(recipient: string, payload: Record<string, unknown>): Promise<string> {
     if (normalizePhone(recipient) !== this.config.allowedRecipient) {
       throw new MetaSendError(null, "recipient_not_allowlisted");
     }
+    const body = await this.post({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: recipient,
+      ...payload,
+    }, 10_000) as MetaGraphSuccessBody;
+    const id = body.messages?.[0]?.id;
+    if (typeof id !== "string" || id === "") {
+      throw new MetaSendError(200, "missing_message_id");
+    }
+    return id;
+  }
+
+  private async post(payload: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
     let response: Response;
     try {
       response = await this.fetcher(
@@ -246,30 +325,20 @@ export class MetaGraphClient {
             authorization: `Bearer ${this.config.accessToken}`,
             "content-type": "application/json",
           },
-          body: JSON.stringify({
-            messaging_product: "whatsapp",
-            recipient_type: "individual",
-            to: recipient,
-            type: "text",
-            text: { body: text },
-          }),
-          signal: AbortSignal.timeout(10_000),
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(timeoutMs),
         },
       );
     } catch {
       throw new MetaSendError(null, "network");
     }
-    const body = await response.json().catch(() => ({})) as MetaGraphErrorBody & MetaGraphSuccessBody;
+    const body = await response.json().catch(() => ({})) as MetaGraphErrorBody;
     if (!response.ok) {
       const code = typeof body.error?.code === "number" ? String(body.error.code) : "http_error";
       const subcode = typeof body.error?.error_subcode === "number" ? body.error.error_subcode : null;
       throw new MetaSendError(response.status, code, subcode);
     }
-    const id = body.messages?.[0]?.id;
-    if (typeof id !== "string" || id === "") {
-      throw new MetaSendError(response.status, "missing_message_id");
-    }
-    return id;
+    return body;
   }
 }
 
@@ -295,6 +364,7 @@ export class MetaInbox {
         sealed_payload: this.seal(message.internalMessage.message_id, {
           recipient: message.recipient,
           text: message.internalMessage.text,
+          ...(message.internalMessage.action ? { action: message.internalMessage.action } : {}),
         }),
         message_type: message.internalMessage.message_type,
         received_at: timestamp,
@@ -470,6 +540,8 @@ export class MetaTransport {
   private readonly config: MetaRuntimeConfig;
   private readonly now: () => Date;
   private readonly retryMs: number;
+  private readonly typingDelayMs: number;
+  private readonly sleep: (milliseconds: number) => Promise<void>;
   private readonly log: (event: Record<string, unknown>) => void;
   private drainPromise: Promise<void> | null = null;
   private drainRequested = false;
@@ -491,7 +563,13 @@ export class MetaTransport {
     this.config = config;
     this.now = options.now ?? (() => new Date());
     this.retryMs = options.retryMs ?? 5_000;
+    this.typingDelayMs = options.typingDelayMs ?? 250;
+    this.sleep = options.sleep ?? ((milliseconds) => delay(milliseconds));
+    if (!Number.isInteger(this.typingDelayMs) || this.typingDelayMs < 0 || this.typingDelayMs > 1_000) {
+      throw new Error("META_TYPING_DELAY_MS deve estar entre 0 e 1000");
+    }
     this.log = options.log ?? (() => undefined);
+
   }
 
   async intake(rawBody: Buffer, signature: string | undefined): Promise<number> {
@@ -571,14 +649,16 @@ export class MetaTransport {
       message_id: record.internal_message_id,
       message_type: record.message_type,
       text: payload.text,
+      ...(payload.action ? { action: payload.action } : {}),
     });
     await this.sendImmediate(record, payload.recipient, reply);
   }
 
   private async sendImmediate(record: MetaIntakeRecord, recipient: string, reply: AgentReply): Promise<void> {
+    await this.showPresence(record, reply, "immediate", 0);
     const timestamp = this.timestamp();
     try {
-      const outboundId = await this.graph.sendText(recipient, reply.text);
+      const outboundId = await this.sendReply(record, recipient, reply, "immediate", 0);
       await this.inbox.recordSuccess(record.internal_message_id, "immediate", outboundId, timestamp);
       this.logDelivery(record, reply, "immediate", "delivered", timestamp, outboundId, null, 0);
     } catch (error) {
@@ -628,29 +708,94 @@ export class MetaTransport {
       return;
     }
     const payload = this.inbox.payload(record);
+    await this.showPresence(record, message, "final", attempts);
     const timestamp = this.timestamp();
     try {
-      const outboundId = await this.graph.sendText(payload.recipient, message.text);
-      await this.inbox.recordSuccess(
-        message.source_message_id,
-        "final",
-        outboundId,
-        timestamp,
-        message.id,
-      );
+      const outboundId = await this.sendReply(record, payload.recipient, message, "final", attempts);
+      await this.inbox.recordSuccess(message.source_message_id, "final", outboundId, timestamp, message.id);
       this.logDelivery(record, message, "final", "delivered", timestamp, outboundId, null, attempts);
     } catch (error) {
       const failure = error instanceof MetaSendError ? error : new MetaSendError(null, "unknown");
-      await this.inbox.recordFailure(
-        message.source_message_id,
-        "final",
-        failure,
-        timestamp,
-        message.id,
-      );
+      await this.inbox.recordFailure(message.source_message_id, "final", failure, timestamp, message.id);
       this.logDelivery(record, message, "final", "failed", timestamp, null, failure, attempts);
       throw failure;
     }
+  }
+
+  private async sendReply(
+    record: MetaIntakeRecord,
+    recipient: string,
+    reply: AgentReply,
+    delivery: "immediate" | "final",
+    quoteAttempts: number,
+  ): Promise<string> {
+    if (!reply.interaction) {
+      return this.graph.sendText(recipient, reply.text);
+    }
+    try {
+      return await this.graph.sendInteractive(recipient, reply.text, reply.interaction);
+    } catch (error) {
+      const failure = error instanceof MetaSendError ? error : new MetaSendError(null, "unknown");
+      this.log({
+        event: "meta_interaction",
+        timestamp: this.timestamp(),
+        delivery,
+        status: "fallback",
+        inbound_message_id: record.internal_message_id,
+        quote_attempts: quoteAttempts,
+        http_status: failure.httpStatus,
+        error_code: failure.errorCode,
+      });
+      return this.graph.sendText(recipient, this.plainText(reply));
+    }
+  }
+
+  private plainText(reply: AgentReply): string {
+    if (!reply.interaction) {
+      return reply.text;
+    }
+    return `${reply.text}\n\n${reply.interaction.actions.map((action, index) => `${index + 1}. ${action.title}`).join("\n")}`;
+  }
+
+  private async showPresence(
+    record: MetaIntakeRecord,
+    reply: AgentReply,
+    delivery: "immediate" | "final",
+    quoteAttempts: number,
+  ): Promise<void> {
+    const timestamp = this.timestamp();
+    try {
+      await this.graph.sendPresence(record.meta_message_id);
+      this.logPresence(record, reply, delivery, "delivered", timestamp, null, quoteAttempts);
+      await this.sleep(this.typingDelayMs);
+    } catch (error) {
+      const failure = error instanceof MetaSendError ? error : new MetaSendError(null, "unknown");
+      this.logPresence(record, reply, delivery, "failed", timestamp, failure, quoteAttempts);
+    }
+  }
+
+  private logPresence(
+    record: MetaIntakeRecord,
+    reply: AgentReply,
+    delivery: "immediate" | "final",
+    status: "delivered" | "failed",
+    timestamp: string,
+    failure: MetaSendError | null,
+    quoteAttempts: number,
+  ): void {
+    this.log({
+      event: "meta_presence",
+      timestamp,
+      received_at: record.received_at,
+      delivery,
+      status,
+      inbound_message_id: record.internal_message_id,
+      quote_request_id: reply.quote_request_id,
+      quote_attempts: quoteAttempts,
+      outcome: reply.outcome,
+      http_status: failure?.httpStatus ?? null,
+      error_code: failure?.errorCode ?? null,
+    });
   }
 
   private logDelivery(

@@ -11,6 +11,17 @@ import {
 import { AuditLog, FileConversationStore } from "./persistence.ts";
 import { QuoteClient } from "./quote-client.ts";
 
+function transportOptions(): { typingDelayMs: number; log: (event: Record<string, unknown>) => void } {
+  return {
+    typingDelayMs: Number(process.env.META_TYPING_DELAY_MS ?? "250"),
+    log: (event) => console.log(JSON.stringify({
+      service: "autoseguro-meta",
+      revision: process.env.REVISION ?? "unknown",
+      ...event,
+    })),
+  };
+}
+
 async function main(): Promise<void> {
   const config = metaRuntimeConfig();
   const stateDirectory = process.env.STATE_DIR ?? ".runtime/conversations";
@@ -31,13 +42,7 @@ async function main(): Promise<void> {
     new MetaInbox(process.env.META_INTAKE_DIR ?? ".runtime/meta-intake", config.appSecret),
     new MetaGraphClient(config),
     config,
-    {
-      log: (event) => console.log(JSON.stringify({
-        service: "autoseguro-meta",
-        revision: process.env.REVISION ?? "unknown",
-        ...event,
-      })),
-    },
+    transportOptions(),
   );
   const server = createServer(createMetaHttpHandler(config, transport));
   const port = Number(process.env.PORT ?? "3000");
