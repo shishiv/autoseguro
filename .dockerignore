@@ -1,0 +1,8 @@
+.git
+.env
+.runtime
+node_modules
+coverage
+dist
+examples
+test
