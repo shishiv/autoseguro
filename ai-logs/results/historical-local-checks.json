@@ -1,0 +1,155 @@
+{
+  "policy": "Only commands and outcomes present in the sanitized sessions are listed. Iterative failures remain visible because they drove corrections.",
+  "pull_requests": [
+    {
+      "checks": [
+        {
+          "command": "npm run check",
+          "exit_code": 0,
+          "failed": 0,
+          "passed": 14,
+          "source_record": 151,
+          "tests": 14,
+          "timestamp": "2026-08-28T15:29:00.293Z"
+        },
+        {
+          "command": "npm run check",
+          "exit_code": 0,
+          "failed": 0,
+          "passed": 22,
+          "source_record": 633,
+          "tests": 22,
+          "timestamp": "2026-08-28T16:53:37.448Z"
+        }
+      ],
+      "final_source_commit": "b7ef112bd169ff9d94a265d913e4526f62bb1c65",
+      "merge_commit": "43a552898962edc108573bed331072c304f0f3ad",
+      "pull_request": "https://github.com/shishiv/autoseguro/pull/1",
+      "source": "../sessions/2026-08-28-core-implementation.jsonl"
+    },
+    {
+      "checks": [
+        {
+          "command": "pkexec /usr/bin/docker build -t autoseguro-meta-validation $WORKTREE",
+          "exit_code": 0,
+          "result": "image build passed",
+          "source_record": 217,
+          "timestamp": "2026-08-28T23:06:35.734Z"
+        },
+        {
+          "command": "npm run check",
+          "exit_code": 0,
+          "failed": 0,
+          "passed": 33,
+          "source_record": 612,
+          "tests": 33,
+          "timestamp": "2026-08-29T00:31:41.301Z"
+        }
+      ],
+      "final_source_commit": "c3ea8a8b66e95ce2191295ee53f438b84a71eeb5",
+      "merge_commit": "47bb14c8808a44d140ff4c866897781ac646e5da",
+      "pull_request": "https://github.com/shishiv/autoseguro/pull/2",
+      "source": "../sessions/2026-08-28-meta-pilot.jsonl"
+    },
+    {
+      "checks": [
+        {
+          "command": "npm run typecheck",
+          "exit_code": 2,
+          "result": "syntax errors found and corrected",
+          "source_record": 90,
+          "timestamp": "2026-08-29T08:27:13.375Z"
+        },
+        {
+          "command": "npm test",
+          "exit_code": 0,
+          "failed": 0,
+          "passed": 33,
+          "source_record": 130,
+          "tests": 33,
+          "timestamp": "2026-08-29T08:29:33.717Z"
+        },
+        {
+          "command": "npm run check",
+          "exit_code": 0,
+          "failed": 0,
+          "passed": 42,
+          "source_record": 368,
+          "tests": 42,
+          "timestamp": "2026-08-29T09:06:22.809Z"
+        },
+        {
+          "command": "npm run check",
+          "exit_code": 0,
+          "failed": 0,
+          "passed": 49,
+          "source_record": 762,
+          "tests": 49,
+          "timestamp": "2026-08-29T11:56:27.662Z"
+        },
+        {
+          "command": "npm run check",
+          "exit_code": 0,
+          "failed": 0,
+          "passed": 49,
+          "source_record": 774,
+          "tests": 49,
+          "timestamp": "2026-08-29T12:33:51.094Z"
+        }
+      ],
+      "final_source_commit": "193e547d050b59d626215b0c3dfdeee98b968b25",
+      "limitation": "The final unbiased live WhatsApp journey was not run in PR 3. The worker stated this explicitly.",
+      "merge_commit": "67052b8eaaa81b535868d5e18353e6ba68c7901f",
+      "pull_request": "https://github.com/shishiv/autoseguro/pull/3",
+      "source": "../sessions/2026-08-29-whatsapp-ux.jsonl"
+    },
+    {
+      "builder_commit": "ee0ac2e838f0be4d62ccf48b55057419433f02ae",
+      "checks": [
+        {
+          "command": "npm run check",
+          "exit_code": 0,
+          "failed": 0,
+          "passed": 49,
+          "source_record": 81,
+          "tests": 49,
+          "timestamp": "2026-08-29T12:42:32.194Z"
+        },
+        {
+          "command": "node .cursor/skills/verify-autoseguro/verify.mjs --run-id proof-full-final",
+          "exit_code": 0,
+          "families": 10,
+          "finished_at": "2026-08-29T13:41:19.278Z",
+          "journeys": 200,
+          "source_records": [
+            417,
+            418
+          ],
+          "timestamp": "2026-08-29T13:40:03.037Z"
+        },
+        {
+          "command": "npm run check",
+          "exit_code": 0,
+          "failed": 0,
+          "passed": 49,
+          "source_record": 455,
+          "tests": 49,
+          "timestamp": "2026-08-29T13:45:39.069Z"
+        },
+        {
+          "command": "node .cursor/skills/verify-autoseguro/verify.mjs --feature greeting-plan-selection --run-id proof-mapped-ee0ac2e",
+          "harness_result": "passed one journey",
+          "source_record": 479,
+          "timestamp": "2026-08-29T13:48:51.393Z",
+          "wrapper_exit_code": 1,
+          "wrapper_failure": "the follow-on jq commit assertion was malformed"
+        }
+      ],
+      "merge_commit": "2a3e288eaf9218c8ac05b8c36270b97d1e18f0c1",
+      "pull_request": "https://github.com/shishiv/autoseguro/pull/4",
+      "source": "../sessions/2026-08-29-verification-skill-builder.jsonl"
+    }
+  ],
+  "schema_version": 1,
+  "title": "Historical local checks for PRs 1-4"
+}
