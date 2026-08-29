@@ -231,6 +231,22 @@ Registre somente horários, IDs truncados ou hashados, contagem de tentativas e 
 
 Esse round trip prova transporte, isolamento e retomada. Ele não substitui a avaliação estatística de 100 conversas em [`examples/evaluation/`](examples/evaluation/), que mede retries, duplicação, latência e ausência de preço inventado sob carga reproduzível.
 
+## Replay híbrido da API
+
+> Evidência: **API-emulated hybrid**. Não é WhatsApp real.
+
+O replay em [`examples/api-replay/`](examples/api-replay/) dirige o webhook HTTP, o núcleo, a outbox, o DeepSeek V4 Flash do Ollama Cloud e o serviço oficial de cotações. Um peer Graph API em `127.0.0.1` captura presença, texto, listas e botões. Ele nunca chama Meta nem envia uma mensagem a um telefone.
+
+Com o `.env` local já configurado e o checkout oficial do challenge disponível:
+
+```bash
+QUOTE_SERVICE_DIR=/home/shiv/Projects/namastex-fde-challenge/quote-service npm run api:replay
+```
+
+O comando inicia um processo descartável do serviço oficial para cada cenário, usa somente o endpoint Ollama configurado e redes loopback para Meta e cotação, remove o estado temporário e regrava cinco transcrições, resultados estruturados, resumo e proveniência de formatos. O manifesto preserva formas e hashes das fontes aceitas, mas substitui WABA, telefone, `wamid`, callback, timestamp, app, token, PIN e perfil.
+
+Ele prova o caminho webhook/core/outbox e contratos semânticos. Não prova que Meta aceitaria os requests ou como um cliente WhatsApp renderizaria as mensagens.
+
 ## Avaliação reproduzível
 
 Reinicie a API oficial com seed 42 antes do comando. A avaliação executa os cenários forçados, 100 conversas contra a API real e 20 exemplos de linguagem no Ollama Cloud:
