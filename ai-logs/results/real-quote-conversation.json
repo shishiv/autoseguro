@@ -1,0 +1,39 @@
+{
+  "attempts": [
+    {
+      "attempt": 1,
+      "failure_kind": "timeout",
+      "http_status": null,
+      "latency_ms": 3001,
+      "outcome": "awaiting_data"
+    },
+    {
+      "attempt": 2,
+      "failure_kind": null,
+      "http_status": 200,
+      "latency_ms": 3,
+      "outcome": "resolved"
+    }
+  ],
+  "command": "STATE_DIR=.runtime/demo-state AUDIT_LOG_PATH=.runtime/demo-audit.jsonl npm run chat -- --conversation demo-real-20260828 --replay examples/conversation-input.jsonl --reset",
+  "commit": "b2f3746d3dc98e08533a52191461dd28c2d3945d",
+  "exit_code": 0,
+  "facts": {
+    "official_price_only": true,
+    "pending_reply_before_final": true,
+    "personal_data_in_script": false
+  },
+  "finished_at": "2026-08-28T16:29:19.008Z",
+  "limitation": "This is one real LLM conversation and one seeded official quote-service path.",
+  "model": "deepseek-v4-flash:0731",
+  "outcome": "resolved",
+  "quote_service_commit": "b617ef83b736b90b94bf145b554b5cb3128f518b",
+  "schema_version": 1,
+  "source_links": [
+    "../../examples/conversation-real.md",
+    "../../examples/conversation-real.audit.jsonl",
+    "https://github.com/shishiv/autoseguro/commit/b2f3746d3dc98e08533a52191461dd28c2d3945d"
+  ],
+  "started_at": "2026-08-28T16:29:13.431Z",
+  "title": "Real Ollama Cloud and official quote-service conversation"
+}

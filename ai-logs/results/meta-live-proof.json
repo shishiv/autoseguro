@@ -1,0 +1,67 @@
+{
+  "canonical_isolation": {
+    "default_callback_unchanged": true,
+    "waba_override_present": false
+  },
+  "commands": [
+    "npm run meta:provision -- --apply",
+    "npm run meta:smoke",
+    "manual allowlisted WhatsApp round trip"
+  ],
+  "commit": "c3ea8a8b66e95ce2191295ee53f438b84a71eeb5",
+  "deployment": {
+    "domain": "<private-host>",
+    "health": "ok",
+    "isolation": "dedicated Dokploy project, compose service, volume, and domain"
+  },
+  "exit_result": "passed",
+  "limitations": [
+    "The live handoff path was not run on Meta; deterministic local coverage handled it.",
+    "Private hosts and all Meta account, app, phone, message, and recipient identifiers are excluded."
+  ],
+  "live_round_trip": {
+    "collection": {
+      "outcome": "awaiting_data",
+      "received_at": "2026-08-29T00:08:39.851Z",
+      "reply_at": "2026-08-29T00:08:42.997Z",
+      "reply_latency_ms": 3146
+    },
+    "handoff_live_proof": "not_run; deterministic handoff remains covered by the local fake-Meta integration test",
+    "privacy": {
+      "payloads_erased": true,
+      "raw_phone_or_message_body_recorded": false
+    },
+    "quote": {
+      "acknowledged_at": "2026-08-29T00:09:02.469Z",
+      "acknowledgement_ms": 2464,
+      "attempt_http_statuses": [
+        200
+      ],
+      "fabricated_price": false,
+      "final_after_ack_ms": 505,
+      "final_at": "2026-08-29T00:09:02.974Z",
+      "outcome": "resolved",
+      "quote_attempts": 1,
+      "received_at": "2026-08-29T00:09:00.005Z"
+    },
+    "status": "resolved"
+  },
+  "merge_commit": "47bb14c8808a44d140ff4c866897781ac646e5da",
+  "schema_version": 1,
+  "source_links": [
+    "../../docs/meta-provisioning-evidence.json",
+    "https://github.com/shishiv/autoseguro/pull/2"
+  ],
+  "test_phone": {
+    "quality": "UNKNOWN",
+    "registered_at": "2026-08-28T23:59:03Z",
+    "status": "CONNECTED",
+    "verification": "NOT_VERIFIED"
+  },
+  "test_waba": {
+    "override_active": true,
+    "subscription_count": 1
+  },
+  "timestamp": "2026-08-29T00:31:13.502444Z",
+  "title": "Meta provisioning and live test-WABA proof"
+}

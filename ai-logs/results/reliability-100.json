@@ -1,0 +1,91 @@
+{
+  "command": "npm run evaluate -- --conversations 100 --concurrency 10 --language-conversations 20 --language-concurrency 2 --output examples/evaluation/reliability-100.json",
+  "commit": "b7ef112bd169ff9d94a265d913e4526f62bb1c65",
+  "concurrency": 10,
+  "configuration": {
+    "failure_and_slow_branches_are_mutually_exclusive": true,
+    "failure_rate": 0.2,
+    "rates_apply_per_call": true,
+    "seed": 42,
+    "slow_rate": 0.1,
+    "slow_seconds": 8
+  },
+  "exit_code": 0,
+  "gates": {
+    "acknowledgement_under_one_second": true,
+    "every_conversation_terminal": true,
+    "every_failed_quote_has_handoff_context": true,
+    "every_terminal_reply_delivered": true,
+    "language_failures_classified": true,
+    "language_sample_complete": true,
+    "no_duplicate_quote_operations": true,
+    "no_invalid_state_transitions": true,
+    "no_pii_in_public_artifacts": true,
+    "no_price_before_confirmation": true,
+    "status_while_pending": true
+  },
+  "language": {
+    "endpoint": "https://ollama.com/v1",
+    "extraction_failures": 0,
+    "llm_failures": 0,
+    "model": "deepseek-v4-flash:0731",
+    "passed": 20,
+    "total": 20
+  },
+  "language_concurrency": 2,
+  "limitations": [
+    "The campaign used one seeded run, not a confidence interval.",
+    "The LLM pass used the configured Ollama Cloud model and is not deterministic across future provider versions."
+  ],
+  "omission": {
+    "hash_basis": "canonical-json-subset",
+    "language_rows": 20,
+    "reliability_conversation_rows": 100,
+    "source_bytes": 139598,
+    "source_fragment_sha256": "<hash-redacted>",
+    "type": "aggregate_only"
+  },
+  "reliability": {
+    "acknowledgement_ms": {
+      "max": 12,
+      "p50": 1,
+      "p95": 8
+    },
+    "duplicate_active_quote_operations": 0,
+    "exhausted_handoff": 5,
+    "first_attempt_success": 63,
+    "invalid_state_transitions": 0,
+    "per_call": {
+      "2xx": 95,
+      "500": 14,
+      "502": 11,
+      "503": 6,
+      "cancelled": 0,
+      "network": 0,
+      "other": 0,
+      "timeout": 22
+    },
+    "pii_leaks_in_public_artifacts": 0,
+    "price_shown_before_confirmed_api_response": 0,
+    "recovered_on_attempt_2": 26,
+    "recovered_on_attempt_3": 6,
+    "status_replies_while_pending": 100,
+    "terminal_failures_without_context_rich_handoff": 0,
+    "terminal_ms": {
+      "max": 6616,
+      "p50": 5,
+      "p95": 3610
+    },
+    "total_conversations": 100,
+    "total_post_attempts": 148,
+    "undelivered_terminal_replies": 0
+  },
+  "schema_version": 1,
+  "source_links": [
+    "../../examples/evaluation/reliability-100.json",
+    "../../examples/evaluation/reliability-100.md",
+    "https://github.com/shishiv/autoseguro/commit/b7ef112bd169ff9d94a265d913e4526f62bb1c65"
+  ],
+  "timestamp": "2026-08-28T16:54:39.531Z",
+  "title": "Seeded reliability campaign"
+}

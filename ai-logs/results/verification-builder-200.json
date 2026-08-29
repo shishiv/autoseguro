@@ -1,0 +1,46 @@
+{
+  "builder_commit": "ee0ac2e838f0be4d62ccf48b55057419433f02ae",
+  "command": "node .cursor/skills/verify-autoseguro/verify.mjs --run-id proof-full-final",
+  "exit_code": 0,
+  "families": {
+    "5xx-recovery": 20,
+    "close-csat-channel-fallback-parity": 20,
+    "complete-input-success": 20,
+    "correction-reselection-date-handling": 20,
+    "duplicate-resume-late-result-races": 20,
+    "eligibility-refusal": 20,
+    "exhausted-infrastructure-handoff": 20,
+    "human-media-ambiguity-handoff": 20,
+    "progressive-happy-success": 20,
+    "timeout-recovery": 20
+  },
+  "finished_at": "2026-08-29T13:41:19.278Z",
+  "journeys": 200,
+  "limitations": [
+    "This was the harness author's campaign.",
+    "Detailed ignored evidence stayed under the worker's local .artifacts directory and was not copied into Git."
+  ],
+  "local_check": {
+    "command": "npm run check",
+    "exit_code": 0,
+    "failed": 0,
+    "passed": 49,
+    "tests": 49,
+    "timestamp": "2026-08-29T13:45:39.069Z"
+  },
+  "merge_commit": "2a3e288eaf9218c8ac05b8c36270b97d1e18f0c1",
+  "post_commit_probe": {
+    "harness": "passed one greeting-plan-selection journey",
+    "reason": "a malformed follow-on jq commit assertion failed after the harness PASS",
+    "wrapper_exit_code": 1
+  },
+  "schema_version": 1,
+  "source_commit": "67052b8eaaa81b535868d5e18353e6ba68c7901f",
+  "source_links": [
+    "../sessions/2026-08-29-verification-skill-builder.jsonl",
+    "../../.cursor/skills/verify-autoseguro/SKILL.md",
+    "https://github.com/shishiv/autoseguro/pull/4"
+  ],
+  "started_at": "2026-08-29T13:40:03.037Z",
+  "title": "Verification-skill builder campaign"
+}

@@ -1,0 +1,170 @@
+{
+  "limitations": [
+    "The verifier uses deterministic loopback substitutes for Meta Graph, the quote boundary, and the LLM.",
+    "The ignored detailed evidence remains local under .artifacts and is not part of this public package."
+  ],
+  "npm_check": {
+    "command": "npm run check",
+    "exit_code": 0,
+    "failed": 0,
+    "finished_at": "2026-08-29T15:48:25.938Z",
+    "passed": 49,
+    "started_at": "2026-08-29T15:48:23.293Z",
+    "tests": 49
+  },
+  "schema_version": 1,
+  "source_links": [
+    "../../.cursor/skills/verify-autoseguro/SKILL.md",
+    "../../.cursor/skills/verify-autoseguro/scenarios.json"
+  ],
+  "title": "Fresh final validation",
+  "verification": {
+    "build": {
+      "fingerprint": "d10cef5078bd77a7c41168d49c08d7009ece21d40f1aed26f0e6690bdf6f941f",
+      "sha": "2a3e288eaf9218c8ac05b8c36270b97d1e18f0c1",
+      "worktree_status": [
+        "M ai-logs/README.md",
+        "?? ai-logs/manifest.json",
+        "?? ai-logs/results/",
+        "?? ai-logs/sessions/",
+        "?? scripts/"
+      ]
+    },
+    "command": "node .cursor/skills/verify-autoseguro/verify.mjs --run-id ai-logs-fresh-final",
+    "coverage": {
+      "action_ids": {
+        "csat_bad": 6,
+        "csat_great": 7,
+        "csat_regular": 7,
+        "date_other": 8,
+        "date_today": 9,
+        "date_tomorrow": 8,
+        "human_help": 5,
+        "plan_completo": 20,
+        "plan_essencial": 22,
+        "plan_premium": 18,
+        "plans_view": 64,
+        "quote_new": 1,
+        "quote_start": 48,
+        "service_end": 20
+      },
+      "age_bands": {
+        "18-24": 45,
+        "25-29": 40,
+        "30-59": 45,
+        "60-75": 40,
+        "76-200": 10,
+        "not-applicable": 20
+      },
+      "cep_risk": {
+        "high": 45,
+        "normal": 135,
+        "not-applicable": 20
+      },
+      "csat": {
+        "bad": 6,
+        "great": 7,
+        "not-applicable": 180,
+        "regular": 7
+      },
+      "families": {
+        "5xx-recovery": 20,
+        "close-csat-channel-fallback-parity": 20,
+        "complete-input-success": 20,
+        "correction-reselection-date-handling": 20,
+        "duplicate-resume-late-result-races": 20,
+        "eligibility-refusal": 20,
+        "exhausted-infrastructure-handoff": 20,
+        "human-media-ambiguity-handoff": 20,
+        "progressive-happy-success": 20,
+        "timeout-recovery": 20
+      },
+      "handoff_reasons": {
+        "human_requested": 9,
+        "invalid_quote_payload": 1,
+        "invalid_quote_response": 1,
+        "llm_unavailable": 4,
+        "not-applicable": 135,
+        "quote_http_401": 1,
+        "quote_network_error": 1,
+        "quote_refused": 20,
+        "quote_service_unavailable": 13,
+        "quote_timeout": 3,
+        "repeated_ambiguity": 4,
+        "unprocessed_media": 4,
+        "unsupported_request": 4
+      },
+      "interaction_formats": {
+        "cli-replay": 5,
+        "meta-button-fallback": 8,
+        "meta-list-fallback": 5,
+        "meta-rich": 200
+      },
+      "job_failure_reasons": {
+        "human_requested": 5,
+        "invalid_quote_payload": 1,
+        "invalid_quote_response": 1,
+        "quote_http_401": 1,
+        "quote_network_error": 1,
+        "quote_refused": 20,
+        "quote_service_unavailable": 13,
+        "quote_timeout": 3,
+        "superseded_by_correction": 7
+      },
+      "plans": {
+        "completo": 61,
+        "essencial": 60,
+        "not-applicable": 20,
+        "premium": 59
+      },
+      "policy_start_forms": {
+        "date-other": 36,
+        "iso": 36,
+        "not-applicable": 20,
+        "pt-BR": 36,
+        "today": 36,
+        "tomorrow": 36
+      },
+      "pro_rata": {
+        "false": 27,
+        "not-applicable": 65,
+        "true": 108
+      },
+      "retry_outcomes": {
+        "500-502-recovered": 5,
+        "500-recovered": 5,
+        "502-recovered": 5,
+        "503-recovered": 5,
+        "eligibility-refused": 20,
+        "first-attempt-success": 95,
+        "human_requested": 5,
+        "invalid_quote_payload": 1,
+        "invalid_quote_response": 1,
+        "not-applicable": 20,
+        "quote_http_401": 1,
+        "quote_network_error": 1,
+        "quote_service_unavailable": 13,
+        "quote_timeout": 3,
+        "timeout-recovered": 20
+      },
+      "vehicle_age_bands": {
+        "0-5": 56,
+        "11-20": 56,
+        "21+": 10,
+        "6-10": 58,
+        "not-applicable": 20
+      },
+      "waiting_periods": {
+        "30": 135,
+        "not-applicable": 65
+      }
+    },
+    "evidence_index_preserved": true,
+    "exit_code": 0,
+    "finished_at": "2026-08-29T15:44:45.125Z",
+    "journeys": 200,
+    "scratch_removed": true,
+    "started_at": "2026-08-29T15:43:27.900Z",
+    "status": "passed"
+  }
+}
