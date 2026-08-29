@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { AuditLog, fieldsForAudit, FileConversationStore } from "./persistence.ts";
 import { redactSensitiveText } from "./privacy.ts";
 import {
@@ -107,6 +107,9 @@ function validateMessage(input: IncomingMessage): void {
 function formatMoney(value: number, currency: string): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(value);
 }
+function reference(requestId: string): string {
+  return createHash("sha256").update(requestId).digest("hex").slice(0, 8);
+}
 
 
 function quoteReply(quote: QuoteResponse, requestId: string): AgentReply {
@@ -117,13 +120,13 @@ function quoteReply(quote: QuoteResponse, requestId: string): AgentReply {
     : "";
   return {
     text: [
-      "Sua cotação foi confirmada pela seguradora.",
+      "Sua cotação está pronta.",
       `Plano: ${quote.plano_nome}`,
       `Mensalidade: ${monthly}`,
       `Franquia: ${deductible}`,
       `Coberturas: ${quote.coberturas.join(", ")}.`,
       firstPayment,
-      `Protocolo: ${requestId}`,
+      `Referência: ${reference(requestId)}`,
     ].filter(Boolean).join("\n"),
     outcome: "resolved",
     quote_request_id: requestId,
@@ -132,26 +135,25 @@ function quoteReply(quote: QuoteResponse, requestId: string): AgentReply {
 }
 
 function terminalReply(state: ConversationState): AgentReply {
-  const requestId = state.active_quote_request_id;
   if (state.stage === "closed") {
     return {
       text: "Este atendimento foi encerrado. Quando quiser, envie uma nova mensagem para começar outra cotação.",
       outcome: "resolved",
-      quote_request_id: requestId,
+      quote_request_id: state.active_quote_request_id,
     };
   }
   if (state.stage === "resolved") {
     return {
-      text: `Esta cotação continua disponível. Protocolo: ${requestId ?? "indisponível"}.`,
+      text: "Sua cotação continua disponível.",
       outcome: "resolved",
-      quote_request_id: requestId,
+      quote_request_id: state.active_quote_request_id,
       interaction: quoteActions,
     };
   }
   return {
-    text: `O atendimento já está com uma pessoa do time. Protocolo: ${requestId ?? "indisponível"}.`,
+    text: "Uma pessoa do time vai ajudar você.",
     outcome: "handoff",
-    quote_request_id: requestId,
+    quote_request_id: state.active_quote_request_id,
   };
 }
 
@@ -229,27 +231,26 @@ function transitionJob(job: QuoteJob, status: QuoteJobStatus, timestamp: string,
 function pendingReply(requestId: string, corrected: boolean): AgentReply {
   return {
     text: corrected
-      ? `Dados corrigidos. Iniciei uma nova cotação sem aguardar a anterior. Aviso aqui quando terminar. Protocolo ${requestId}.`
-      : `Dados recebidos. A cotação começou em segundo plano e eu aviso aqui quando terminar. Protocolo ${requestId}.`,
+      ? "Atualizei seus dados. Vou preparar uma nova cotação e aviso assim que estiver pronta."
+      : "Recebi seus dados. Vou preparar sua cotação e aviso assim que estiver pronta.",
     outcome: "awaiting_data",
     quote_request_id: requestId,
   };
 }
 
 function pendingStatusReply(state: ConversationState, information: boolean): AgentReply {
-  const requestId = state.active_quote_request_id;
   return {
     text: information
-      ? `A API ainda está confirmando o plano, as coberturas e os valores. Não vou antecipar dados como definitivos. Protocolo ${requestId}.`
-      : `A cotação segue em processamento com tentativas limitadas. Não abri outra solicitação. Protocolo ${requestId}.`,
+      ? "Estou preparando sua cotação. Assim que estiver pronta, trago os valores e as coberturas."
+      : "Sua cotação está em andamento. Aviso assim que estiver pronta.",
     outcome: "awaiting_data",
-    quote_request_id: requestId,
+    quote_request_id: state.active_quote_request_id,
   };
 }
 
-function refusalReply(reason: string, requestId: string): AgentReply {
+function refusalReply(requestId: string): AgentReply {
   return {
-    text: `A API recusou a cotação: ${redactSensitiveText(reason).slice(0, 300)}. Não há preço atual para apresentar. Encaminhei o caso para orientação comercial. Protocolo ${requestId}.`,
+    text: `Não foi possível seguir com esta cotação. Uma pessoa do time vai orientar você. Referência: ${reference(requestId)}`,
     outcome: "handoff",
     quote_request_id: requestId,
   };
@@ -257,7 +258,7 @@ function refusalReply(reason: string, requestId: string): AgentReply {
 
 function failureReply(requestId: string): AgentReply {
   return {
-    text: `Não consegui concluir a cotação e não vou estimar um preço. Encaminhei os dados já coletados para uma pessoa do time. Protocolo ${requestId}.`,
+    text: `Não consegui concluir a cotação agora. Uma pessoa do time vai ajudar você. Referência: ${reference(requestId)}`,
     outcome: "handoff",
     quote_request_id: requestId,
   };
@@ -455,7 +456,7 @@ export class AutoSeguroAgent {
       return this.pendingInformation(
         state,
         messageId,
-        "Não consegui confirmar a alteração. A cotação atual segue em processamento.",
+        "Não consegui confirmar a alteração. Vou manter sua cotação atual.",
       );
     }
     return this.awaitData(
@@ -493,7 +494,7 @@ export class AutoSeguroAgent {
       state,
       messageId,
       {
-        text: `${text} Protocolo ${state.active_quote_request_id}.`,
+        text,
         outcome: "awaiting_data",
         quote_request_id: state.active_quote_request_id,
       },
@@ -624,7 +625,7 @@ export class AutoSeguroAgent {
         return;
       }
       if (result.kind === "refused") {
-        await this.completeFailure(state, job, "quote_refused", refusalReply(result.reason, requestId));
+        await this.completeFailure(state, job, "quote_refused", refusalReply(requestId));
         return;
       }
       if (result.kind === "cancelled") {
@@ -808,7 +809,7 @@ export class AutoSeguroAgent {
     const greeted = !state.greeted;
     state.greeted = true;
     const decorated = greeted
-      ? { ...reply, text: `Olá! Eu sou a AutoSeguro. Em poucos passos, monto sua cotação. Os preços vêm da API da seguradora.\n\n${reply.text}` }
+      ? { ...reply, text: `Olá! Eu sou a AutoSeguro. Em poucos passos, monto sua cotação. Os valores são definidos pela seguradora.\n\n${reply.text}` }
       : reply;
     state.processed_messages[messageId] = decorated;
     await this.store.save(state);

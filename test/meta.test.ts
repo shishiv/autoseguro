@@ -405,7 +405,7 @@ test("fake Meta E2E confirma rápido, envia pending e entrega a cotação depois
   assert.equal(response.status, 200);
   assert.ok(acknowledgementMs < 250, `ack demorou ${acknowledgementMs} ms`);
   await waitUntil(() => testHarness.meta.bodies.length === 1 && testHarness.quoteClient.requests.length === 1);
-  assert.match(sentText(testHarness.meta, 0), /cotação começou em segundo plano/u);
+  assert.match(sentText(testHarness.meta, 0), /Recebi seus dados/u);
   assert.doesNotMatch(sentText(testHarness.meta, 0), /R\$/u);
   const durableIntake = await intakeRecord(testHarness.intakeDirectory);
   assert.doesNotMatch(durableIntake, /Completo, 35 anos|5511999998888|meta-token-that-must-not-leak/u);
@@ -434,7 +434,7 @@ test("entrega handoff tardio após esgotar a cotação", async (context) => {
   await testHarness.quoteClient.handoff();
   await waitUntil(() => testHarness.meta.bodies.length === 2);
   await testHarness.transport.waitForIdle();
-  assert.match(sentText(testHarness.meta, 1), /não vou estimar um preço/u);
+  assert.match(sentText(testHarness.meta, 1), /Não consegui concluir/u);
   const conversationId = `wa-${createHash("sha256").update(config.allowedRecipient).digest("hex")}`;
   const state = await testHarness.store.load(conversationId);
   assert.equal(state.quote_jobs[0]?.attempts.length, 3);

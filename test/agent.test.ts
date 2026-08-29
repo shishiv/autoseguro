@@ -223,6 +223,10 @@ async function makeHarness(
 async function makeDeferredHarness(
   context: TestContext,
   responses: LanguageUnderstanding[],
+  createId: () => string = (() => {
+    let id = 0;
+    return () => `quote-request-${id += 1}`;
+  })(),
 ): Promise<{
   agent: AutoSeguroAgent;
   store: FileConversationStore;
@@ -235,10 +239,9 @@ async function makeDeferredHarness(
   const store = new FileConversationStore(join(directory, "state"));
   const auditPath = join(directory, "audit.jsonl");
   const client = new DeferredQuoteClient();
-  let id = 0;
   return {
     agent: new AutoSeguroAgent(store, new AuditLog(auditPath), new StubLlm(responses), client, {
-      createId: () => `quote-request-${id += 1}`,
+      createId,
       now: () => new Date("2026-08-28T12:00:00.000Z"),
     }),
     store,
@@ -378,7 +381,7 @@ for (const scenario of [
     const state = await harness.store.load("conversation-1");
     assert.equal(pending.outcome, "awaiting_data");
     assert.equal(terminal?.outcome, "handoff");
-    assert.match(terminal?.text ?? "", /API recusou/u);
+    assert.match(terminal?.text ?? "", /Não foi possível seguir/u);
     assert.doesNotMatch(terminal?.text ?? "", /R\$/u);
     assert.equal(harness.requests.length, 1);
     assert.equal(state.stage, "handoff");
@@ -474,7 +477,7 @@ test("500, 502 e 503 esgotam três tentativas e criam handoff", async (context) 
   const [terminal] = await collectTerminal(harness.agent);
   const state = await harness.store.load("conversation-1");
   assert.equal(terminal?.outcome, "handoff");
-  assert.match(terminal?.text ?? "", /não vou estimar um preço/u);
+  assert.match(terminal?.text ?? "", /Não consegui concluir/u);
   assert.equal(harness.requests.length, 3);
   assert.equal(state.handoff_reason, "quote_service_unavailable");
   assert.equal(state.quote_jobs[0]?.status, "failed");
@@ -514,7 +517,7 @@ test("duplicata, status e informação durante pending não criam outra cotaçã
   ]);
   assert.deepEqual(duplicate, first);
   assert.equal(status.outcome, "awaiting_data");
-  assert.match(status.text, /segue em processamento/u);
+  assert.match(status.text, /em andamento/u);
   assert.match(information.text, /coberturas/u);
   const [terminal] = await collectTerminal(harness.agent);
   const state = await harness.store.load("conversation-1");
@@ -778,3 +781,54 @@ function expectCsat(rating: "great" | "regular" | "bad"): Record<string, unknown
     csat_rating: rating,
   };
 }
+
+test("mensagens ao cliente ocultam termos técnicos e IDs internos", async (context) => {
+  const requestId = "7a466a1e-2f61-4eda-be04-e89367271429";
+  const finalRequestId = "9e6ab6f3-a24e-4dd9-bf69-5d3d08a5fdc5";
+  const ids = [requestId, finalRequestId];
+  const happy = await makeDeferredHarness(context, [
+    understanding(completeFields()),
+    understanding({}, "status"),
+    understanding({ plano: "premium" }, "information"),
+    understanding({ idade: 36 }),
+  ], () => ids.shift() ?? finalRequestId);
+  const visible = [
+    await happy.agent.handle(message()),
+    await happy.agent.handle(message("Já conseguiu?", "msg-status")),
+    await happy.agent.handle(message("E as coberturas?", "msg-information")),
+    await happy.agent.handle(message("Na verdade tenho 36 anos", "msg-correction")),
+  ];
+  await waitForCalls(happy.client, 2);
+  await happy.client.succeed(1, 225.5);
+  visible.push(...await collectTerminal(happy.agent));
+  visible.push(await happy.agent.handle(message("Quero ver minha cotação", "msg-resolved")));
+  visible.push(await happy.agent.handle({ ...message("Encerrar atendimento", "msg-end"), action: "service_end" }));
+  visible.push(await happy.agent.handle({ ...message("Ótimo", "msg-csat"), action: "csat_great" }));
+  visible.push(await happy.agent.handle(message("Oi", "msg-closed")));
+
+  const refused = await makeHarness(
+    context,
+    [understanding(completeFields())],
+    () => ({ status: 422, body: { error: "cotacao_recusada" } }),
+  );
+  visible.push(await refused.agent.handle(message()));
+  visible.push(...await collectTerminal(refused.agent));
+
+  const failed = await makeHarness(
+    context,
+    [understanding(completeFields())],
+    () => ({ status: 503, body: { error: "upstream_unavailable" } }),
+  );
+  visible.push(await failed.agent.handle(message()));
+  visible.push(...await collectTerminal(failed.agent));
+
+  const customerText = visible.map((reply) => reply.text).join("\n");
+  assert.doesNotMatch(customerText, /\b(?:api|http|retry|attempts?|tentativas?|processamento|protocolo)\b|segundo plano|background/iu);
+  assert.doesNotMatch(customerText, /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/iu);
+  assert.match(customerText, /Referência: [0-9a-f]{8}/u);
+  const state = await happy.store.load("conversation-1");
+  assert.equal(state.active_quote_request_id, finalRequestId);
+  const audit = await readFile(happy.auditPath, "utf8");
+  assert.match(audit, new RegExp(requestId, "u"));
+  assert.match(audit, new RegExp(finalRequestId, "u"));
+});
