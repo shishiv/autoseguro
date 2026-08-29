@@ -6,6 +6,7 @@ services:
       QUOTE_FAILURE_RATE: "0.20"
       QUOTE_SLOW_RATE: "0.10"
       QUOTE_SLOW_SECONDS: "8"
+      QUOTE_SEED: "${QUOTE_SEED:-}"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s
@@ -39,3 +40,4 @@ services:
 
 volumes:
   autoseguro-data:
+    name: "${AUTOSEGURO_VOLUME_NAME:-autoseguro-meta-data}"

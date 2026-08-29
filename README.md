@@ -187,7 +187,7 @@ O intake persiste o `wamid` original e cifra telefone e texto com AES-256-GCM de
 
 ### Deploy separado
 
-[`compose.meta.yaml`](compose.meta.yaml) sobe dois serviços isolados: este servidor e o quote service oficial, sem alterar seu código. O build do serviço oficial está preso ao commit documentado no Compose. A instabilidade continua em `20%` de falhas, `10%` de chamadas lentas e 8 segundos de atraso.
+[`compose.meta.yaml`](compose.meta.yaml) sobe dois serviços isolados: este servidor e o quote service oficial, sem alterar seu código. O build do serviço oficial está preso ao commit documentado no Compose. A instabilidade continua em `20%` de falhas, `10%` de chamadas lentas e 8 segundos de atraso. `QUOTE_SEED` torna um smoke reproduzível; `AUTOSEGURO_VOLUME_NAME` permite um volume descartável por cenário.
 
 ```bash
 docker compose --env-file .env -f compose.meta.yaml up -d --build
