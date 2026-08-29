@@ -240,7 +240,7 @@ O replay em [`examples/api-replay/`](examples/api-replay/) dirige o webhook HTTP
 Com o `.env` local já configurado e o checkout oficial do challenge disponível:
 
 ```bash
-QUOTE_SERVICE_DIR=/home/shiv/Projects/namastex-fde-challenge/quote-service npm run api:replay
+QUOTE_SERVICE_DIR=<path-to-challenge>/quote-service npm run api:replay
 ```
 
 O comando inicia um processo descartável do serviço oficial para cada cenário, usa somente o endpoint Ollama configurado e redes loopback para Meta e cotação, remove o estado temporário e regrava cinco transcrições, resultados estruturados, resumo e proveniência de formatos. O manifesto preserva formas e hashes das fontes aceitas, mas substitui WABA, telefone, `wamid`, callback, timestamp, app, token, PIN e perfil.
