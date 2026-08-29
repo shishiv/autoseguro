@@ -85,6 +85,7 @@ interface MetaGraphSuccessBody {
 interface MetaTransportOptions {
   now?: () => Date;
   retryMs?: number;
+  log?: (event: Record<string, unknown>) => void;
 }
 
 const emptyDelivery = (): MetaDelivery => ({
@@ -469,6 +470,7 @@ export class MetaTransport {
   private readonly config: MetaRuntimeConfig;
   private readonly now: () => Date;
   private readonly retryMs: number;
+  private readonly log: (event: Record<string, unknown>) => void;
   private drainPromise: Promise<void> | null = null;
   private drainRequested = false;
   private readonly watchers = new Map<string, Promise<void>>();
@@ -489,6 +491,7 @@ export class MetaTransport {
     this.config = config;
     this.now = options.now ?? (() => new Date());
     this.retryMs = options.retryMs ?? 5_000;
+    this.log = options.log ?? (() => undefined);
   }
 
   async intake(rawBody: Buffer, signature: string | undefined): Promise<number> {
@@ -573,12 +576,15 @@ export class MetaTransport {
   }
 
   private async sendImmediate(record: MetaIntakeRecord, recipient: string, reply: AgentReply): Promise<void> {
+    const timestamp = this.timestamp();
     try {
       const outboundId = await this.graph.sendText(recipient, reply.text);
-      await this.inbox.recordSuccess(record.internal_message_id, "immediate", outboundId, this.timestamp());
+      await this.inbox.recordSuccess(record.internal_message_id, "immediate", outboundId, timestamp);
+      this.logDelivery(record, reply, "immediate", "delivered", timestamp, outboundId, null, 0);
     } catch (error) {
       const failure = error instanceof MetaSendError ? error : new MetaSendError(null, "unknown");
-      await this.inbox.recordFailure(record.internal_message_id, "immediate", failure, this.timestamp());
+      await this.inbox.recordFailure(record.internal_message_id, "immediate", failure, timestamp);
+      this.logDelivery(record, reply, "immediate", "failed", timestamp, null, failure, 0);
       throw failure;
     }
   }
@@ -603,40 +609,74 @@ export class MetaTransport {
   private async deliverFinal(conversationId: string): Promise<void> {
     await this.agent.resume(conversationId);
     await this.agent.waitForIdle(conversationId);
-    await this.agent.deliverOutbox(conversationId, (message) => this.sendFinal(message));
-    const state = await this.store.load(conversationId);
-    if (state.outbox.every((message) => message.delivered_at !== null)) {
+    const before = await this.store.load(conversationId);
+    const attempts = new Map(before.quote_jobs.map((job) => [job.request_id, job.attempts.length]));
+    await this.agent.deliverOutbox(
+      conversationId,
+      (message) => this.sendFinal(message, attempts.get(message.quote_request_id ?? "") ?? 0),
+    );
+    const after = await this.store.load(conversationId);
+    if (after.outbox.every((message) => message.delivered_at !== null)) {
       await this.inbox.completeConversation(conversationId, this.timestamp());
     }
   }
 
-  private async sendFinal(message: OutboxMessage): Promise<void> {
+  private async sendFinal(message: OutboxMessage, attempts: number): Promise<void> {
     const record = await this.inbox.byInternalMessageId(message.source_message_id);
     const prior = record.final[message.id];
     if (prior?.outbound_message_id) {
       return;
     }
     const payload = this.inbox.payload(record);
+    const timestamp = this.timestamp();
     try {
       const outboundId = await this.graph.sendText(payload.recipient, message.text);
       await this.inbox.recordSuccess(
         message.source_message_id,
         "final",
         outboundId,
-        this.timestamp(),
+        timestamp,
         message.id,
       );
+      this.logDelivery(record, message, "final", "delivered", timestamp, outboundId, null, attempts);
     } catch (error) {
       const failure = error instanceof MetaSendError ? error : new MetaSendError(null, "unknown");
       await this.inbox.recordFailure(
         message.source_message_id,
         "final",
         failure,
-        this.timestamp(),
+        timestamp,
         message.id,
       );
+      this.logDelivery(record, message, "final", "failed", timestamp, null, failure, attempts);
       throw failure;
     }
+  }
+
+  private logDelivery(
+    record: MetaIntakeRecord,
+    reply: AgentReply,
+    delivery: "immediate" | "final",
+    status: "delivered" | "failed",
+    timestamp: string,
+    outboundId: string | null,
+    failure: MetaSendError | null,
+    quoteAttempts: number,
+  ): void {
+    this.log({
+      event: "meta_delivery",
+      timestamp,
+      received_at: record.received_at,
+      delivery,
+      status,
+      inbound_message_id: record.internal_message_id,
+      outbound_message_id: outboundId ? `sha256:${digest(outboundId)}` : null,
+      quote_request_id: reply.quote_request_id,
+      quote_attempts: quoteAttempts,
+      outcome: reply.outcome,
+      http_status: failure?.httpStatus ?? null,
+      error_code: failure?.errorCode ?? null,
+    });
   }
 
   private scheduleRetry(): void {

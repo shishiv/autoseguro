@@ -139,6 +139,7 @@ interface Harness {
   transport: MetaTransport;
   meta: FakeMeta;
   quoteClient: DeferredQuoteClient;
+  events: Array<Record<string, unknown>>;
 }
 
 function completeUnderstanding(): LanguageUnderstanding {
@@ -205,19 +206,20 @@ async function harness(
   );
   const inbox = new MetaInbox(intakeDirectory, config.appSecret);
   const meta = new FakeMeta(statuses);
+  const events: Array<Record<string, unknown>> = [];
   const transport = new MetaTransport(
     agent,
     store,
     inbox,
     new MetaGraphClient(config, meta.fetcher),
     config,
-    { now: () => new Date("2026-08-28T12:00:00.000Z"), retryMs },
+    { now: () => new Date("2026-08-28T12:00:00.000Z"), retryMs, log: (event) => events.push(event) },
   );
   context.after(async () => {
     transport.stop();
     await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 10 });
   });
-  return { agent, store, inbox, intakeDirectory, auditPath, stateDirectory, transport, meta, quoteClient };
+  return { agent, store, inbox, intakeDirectory, auditPath, stateDirectory, transport, meta, quoteClient, events };
 }
 
 function webhookPayload(
@@ -398,6 +400,15 @@ test("fake Meta E2E confirma rápido, envia pending e entrega a cotação depois
   await waitUntil(() => testHarness.meta.bodies.length === 2);
   await testHarness.transport.waitForIdle();
   assert.match(sentText(testHarness.meta, 1), /321,45/u);
+  assert.deepEqual(testHarness.events.map((event) => ({
+    delivery: event.delivery,
+    status: event.status,
+    quote_attempts: event.quote_attempts,
+    outcome: event.outcome,
+  })), [
+    { delivery: "immediate", status: "delivered", quote_attempts: 0, outcome: "awaiting_data" },
+    { delivery: "final", status: "delivered", quote_attempts: 1, outcome: "resolved" },
+  ]);
 });
 
 test("entrega handoff tardio após esgotar a cotação", async (context) => {
@@ -413,6 +424,20 @@ test("entrega handoff tardio após esgotar a cotação", async (context) => {
   const state = await testHarness.store.load(conversationId);
   assert.equal(state.quote_jobs[0]?.attempts.length, 3);
   assert.equal(state.stage, "handoff");
+  assert.deepEqual(testHarness.events.at(-1), {
+    event: "meta_delivery",
+    timestamp: "2026-08-28T12:00:00.000Z",
+    received_at: "2026-08-28T12:00:00.000Z",
+    delivery: "final",
+    status: "delivered",
+    inbound_message_id: `wamid-${createHash("sha256").update("wamid-delayed-handoff").digest("hex")}`,
+    outbound_message_id: `sha256:${createHash("sha256").update("meta-out-2").digest("hex")}`,
+    quote_request_id: "quote-request-meta",
+    quote_attempts: 3,
+    outcome: "handoff",
+    http_status: null,
+    error_code: null,
+  });
 });
 
 test("reinício reproduz a outbox final sem repetir a resposta imediata", async (context) => {

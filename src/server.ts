@@ -31,6 +31,13 @@ async function main(): Promise<void> {
     new MetaInbox(process.env.META_INTAKE_DIR ?? ".runtime/meta-intake", config.appSecret),
     new MetaGraphClient(config),
     config,
+    {
+      log: (event) => console.log(JSON.stringify({
+        service: "autoseguro-meta",
+        revision: process.env.REVISION ?? "unknown",
+        ...event,
+      })),
+    },
   );
   const server = createServer(createMetaHttpHandler(config, transport));
   const port = Number(process.env.PORT ?? "3000");
@@ -39,7 +46,12 @@ async function main(): Promise<void> {
   }
   await new Promise<void>((resolve) => server.listen(port, "0.0.0.0", resolve));
   await transport.recover();
-  console.log(`AutoSeguro Meta ativo na porta ${port}`);
+  console.log(JSON.stringify({
+    service: "autoseguro-meta",
+    revision: process.env.REVISION ?? "unknown",
+    event: "server_started",
+    port,
+  }));
 
   const shutdown = (): void => {
     transport.stop();
