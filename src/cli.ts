@@ -4,11 +4,12 @@ import { stdin, stdout } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import { AutoSeguroAgent } from "./agent.ts";
+import { actionFromChoice, renderPlainText } from "./interactions.ts";
 import { OpenAICompatibleLlm } from "./llm.ts";
 import { AuditLog, FileConversationStore } from "./persistence.ts";
 import { redactSensitiveText } from "./privacy.ts";
 import { QuoteClient } from "./quote-client.ts";
-import type { IncomingMessage, MessageType, OutboxMessage } from "./types.ts";
+import type { AgentReply, IncomingMessage, MessageType, OutboxMessage } from "./types.ts";
 
 interface ReplayRecord {
   conversation_id?: unknown;
@@ -47,17 +48,28 @@ function readReplayRecord(line: string, fallbackConversationId: string, index: n
   };
 }
 
+function printReply(prefix: string, reply: AgentReply): void {
+  console.log(`${prefix}${renderPlainText(reply)}`);
+}
+
 function printAsyncReply(message: OutboxMessage): void {
-  console.log(`AutoSeguro [assíncrono]: ${message.text}`);
+  printReply("AutoSeguro [assíncrono]: ", message);
 }
 
-async function emitReady(agent: AutoSeguroAgent, conversationId: string): Promise<void> {
+async function emitReady(
+  agent: AutoSeguroAgent,
+  conversationId: string,
+  onReply: (reply: AgentReply) => void = () => undefined,
+): Promise<void> {
   await agent.waitForIdle(conversationId);
-  await agent.deliverOutbox(conversationId, printAsyncReply);
+  await agent.deliverOutbox(conversationId, (message) => {
+    printAsyncReply(message);
+    onReply(message);
+  });
 }
 
-function watchOutbox(agent: AutoSeguroAgent, conversationId: string): void {
-  void emitReady(agent, conversationId).catch((error: unknown) => {
+function watchOutbox(agent: AutoSeguroAgent, conversationId: string, onReply: (reply: AgentReply) => void): void {
+  void emitReady(agent, conversationId, onReply).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`Erro assíncrono: ${redactSensitiveText(message)}`);
   });
@@ -66,42 +78,49 @@ function watchOutbox(agent: AutoSeguroAgent, conversationId: string): void {
 async function prepareConversation(agent: AutoSeguroAgent, conversationId: string): Promise<void> {
   await agent.deliverOutbox(conversationId, printAsyncReply);
   if (await agent.resume(conversationId)) {
-    watchOutbox(agent, conversationId);
+    watchOutbox(agent, conversationId, () => undefined);
   }
 }
 
 async function replay(path: string, conversationId: string, agent: AutoSeguroAgent): Promise<void> {
   const lines = (await readFile(path, "utf8")).split(/\r?\n/u).filter((line) => line.trim() !== "");
+  let previous: AgentReply | null = null;
   for (const [index, line] of lines.entries()) {
     const message = readReplayRecord(line, conversationId, index);
     if (!message) {
       continue;
     }
     console.log(`Lead: ${redactSensitiveText(message.text)}`);
-    const reply = await agent.handle(message);
-    console.log(`AutoSeguro: ${reply.text}`);
+    const action = actionFromChoice(previous, message.text);
+    const reply = await agent.handle(action ? { ...message, action } : message);
+    printReply("AutoSeguro: ", reply);
+    previous = reply;
   }
-  await emitReady(agent, conversationId);
+  await emitReady(agent, conversationId, (reply) => { previous = reply; });
 }
 
 async function interactive(conversationId: string, agent: AutoSeguroAgent): Promise<void> {
   const terminal = createInterface({ input: stdin, output: stdout });
+  let previous: AgentReply | null = null;
   console.log(`AutoSeguro: Olá. Envie "sair" para encerrar. Conversa ${conversationId}.`);
   try {
     while (true) {
       const text = await terminal.question("Você: ");
       if (text.trim().toLowerCase() === "sair") {
-        await emitReady(agent, conversationId);
+        await emitReady(agent, conversationId, (reply) => { previous = reply; });
         return;
       }
-      const reply = await agent.handle({
+      const message: IncomingMessage = {
         conversation_id: conversationId,
         message_id: `${conversationId}-${randomUUID()}`,
         message_type: "text",
         text,
-      });
-      console.log(`AutoSeguro: ${reply.text}`);
-      watchOutbox(agent, conversationId);
+      };
+      const action = actionFromChoice(previous, text);
+      const reply = await agent.handle(action ? { ...message, action } : message);
+      printReply("AutoSeguro: ", reply);
+      previous = reply;
+      watchOutbox(agent, conversationId, (outbox) => { previous = outbox; });
     }
   } finally {
     terminal.close();

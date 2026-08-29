@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { URL } from "node:url";
 import { AutoSeguroAgent } from "./agent.ts";
+import { renderPlainText } from "./interactions.ts";
 import { FileConversationStore } from "./persistence.ts";
 import type { ActionId, AgentReply, IncomingMessage, MessageType, OutboxMessage, ReplyInteraction } from "./types.ts";
 
@@ -747,15 +748,8 @@ export class MetaTransport {
         http_status: failure.httpStatus,
         error_code: failure.errorCode,
       });
-      return this.graph.sendText(recipient, this.plainText(reply));
+      return this.graph.sendText(recipient, renderPlainText(reply));
     }
-  }
-
-  private plainText(reply: AgentReply): string {
-    if (!reply.interaction) {
-      return reply.text;
-    }
-    return `${reply.text}\n\n${reply.interaction.actions.map((action, index) => `${index + 1}. ${action.title}`).join("\n")}`;
   }
 
   private async showPresence(
