@@ -11,12 +11,16 @@ import {
 import { AuditLog, FileConversationStore } from "./persistence.ts";
 import { QuoteClient } from "./quote-client.ts";
 
+function revision(): string {
+  return process.env.REVISION ?? "unknown";
+}
+
 function transportOptions(): { typingDelayMs: number; log: (event: Record<string, unknown>) => void } {
   return {
     typingDelayMs: Number(process.env.META_TYPING_DELAY_MS ?? "250"),
     log: (event) => console.log(JSON.stringify({
       service: "autoseguro-meta",
-      revision: process.env.REVISION ?? "unknown",
+      revision: revision(),
       ...event,
     })),
   };
@@ -44,7 +48,7 @@ async function main(): Promise<void> {
     config,
     transportOptions(),
   );
-  const server = createServer(createMetaHttpHandler(config, transport));
+  const server = createServer(createMetaHttpHandler(config, transport, revision()));
   const port = Number(process.env.PORT ?? "3000");
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error("PORT inválida");
@@ -53,7 +57,7 @@ async function main(): Promise<void> {
   await transport.recover();
   console.log(JSON.stringify({
     service: "autoseguro-meta",
-    revision: process.env.REVISION ?? "unknown",
+    revision: revision(),
     event: "server_started",
     port,
   }));

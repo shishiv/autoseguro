@@ -84,6 +84,11 @@ const planActions = {
   plan_premium: "premium",
 } as const;
 const csatRatings = { csat_great: "great", csat_regular: "regular", csat_bad: "bad" } as const;
+const greetingPattern = /^(?:oi|olá|ola|bom dia|boa tarde|boa noite)[!,.\s]*$/iu;
+
+function normalizeCommand(value: string): string {
+  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
+}
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
 const allowedTransitions: Record<QuoteJobStatus, QuoteJobStatus[]> = {
   pending: ["retrying", "delivered", "failed"],
@@ -352,6 +357,12 @@ export class AutoSeguroAgent {
     }
     if (input.action) {
       return this.processAction(state, input.message_id, input.action);
+    }
+    if (input.message_type === "text" && normalizeCommand(input.text) === "nova cotacao") {
+      return this.newQuote(state, input.message_id);
+    }
+    if (input.message_type === "text" && greetingPattern.test(input.text) && state.stage === "collecting") {
+      return this.welcome(state, input.message_id);
     }
     if (["resolved", "handoff", "closed"].includes(state.stage)) {
       return this.finish(state, input.message_id, terminalReply(state), "message");
@@ -745,16 +756,30 @@ export class AutoSeguroAgent {
   }
 
   private async newQuote(state: ConversationState, messageId: string): Promise<AgentReply> {
-    if (state.stage !== "resolved" || state.awaiting_csat) {
-      return this.finish(state, messageId, terminalReply(state), "message");
-    }
     state.stage = "collecting";
     state.fields = {};
     state.ambiguity_count = 0;
     state.active_quote_request_id = null;
     state.quote = null;
     state.handoff_reason = null;
+    state.awaiting_csat = false;
     return this.awaitData(state, messageId, missingFields(state.fields), []);
+  }
+
+  private async welcome(state: ConversationState, messageId: string): Promise<AgentReply> {
+    return this.finish(state, messageId, {
+      text: "Como você quer seguir?",
+      outcome: "awaiting_data",
+      quote_request_id: state.active_quote_request_id,
+      interaction: {
+        kind: "buttons",
+        actions: [
+          { id: "quote_start", title: "Começar cotação" },
+          { id: "plans_view", title: "Ver planos" },
+          { id: "human_help", title: "Falar com uma pessoa" },
+        ],
+      },
+    }, "message");
   }
 
   private async endService(state: ConversationState, messageId: string): Promise<AgentReply> {

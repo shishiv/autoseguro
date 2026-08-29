@@ -717,11 +717,11 @@ test("redação de PII preserva IDs de correlação", () => {
   assert.equal(redactSensitiveText("Telefone +55 11 99999-8888"), "Telefone <phone_redacted>");
 });
 
-test("saúda uma vez e coleta um campo por vez com a lista de planos", async (context) => {
-  const harness = await makeDeferredHarness(context, [understanding({})]);
+test("saúda uma vez e inicia a coleta sem chamar o LLM", async (context) => {
+  const harness = await makeDeferredHarness(context, []);
   const first = await harness.agent.handle(message("Oi", "msg-greeting"));
   assert.match(first.text, /Eu sou a AutoSeguro/u);
-  assert.deepEqual(first.interaction?.actions.map((action) => action.id), ["plan_essencial", "plan_completo", "plan_premium"]);
+  assert.deepEqual(first.interaction?.actions.map((action) => action.id), ["quote_start", "plans_view", "human_help"]);
   const plan = await harness.agent.handle({ ...message("Completo", "msg-plan"), action: "plan_completo" });
   assert.match(plan.text, /Qual é a sua idade/u);
   assert.doesNotMatch(plan.text, /Eu sou a AutoSeguro/u);
@@ -831,4 +831,28 @@ test("mensagens ao cliente ocultam termos técnicos e IDs internos", async (cont
   const audit = await readFile(happy.auditPath, "utf8");
   assert.match(audit, new RegExp(requestId, "u"));
   assert.match(audit, new RegExp(finalRequestId, "u"));
+});
+
+test("nova cotação em texto recupera estados terminais sem o LLM", async (context) => {
+  const handoff = await makeDeferredHarness(context, []);
+  await handoff.agent.handle({ ...message("mensagem de voz", "msg-media"), message_type: "audio" });
+  const fromHandoff = await handoff.agent.handle(message("NOVA COTACAO", "msg-new-handoff"));
+  assert.equal(fromHandoff.interaction?.kind, "list");
+  assert.equal((await handoff.store.load("conversation-1")).stage, "collecting");
+
+  const resolved = await makeHarness(context, [understanding(completeFields())], () => ({ status: 200, body: successfulQuote() }));
+  await resolved.agent.handle(message());
+  await collectTerminal(resolved.agent);
+  const fromResolved = await resolved.agent.handle(message("nova cotação", "msg-new-resolved"));
+  assert.equal(fromResolved.interaction?.kind, "list");
+  assert.equal((await resolved.store.load("conversation-1")).stage, "collecting");
+
+  const closed = await makeHarness(context, [understanding(completeFields())], () => ({ status: 200, body: successfulQuote() }));
+  await closed.agent.handle(message());
+  await collectTerminal(closed.agent);
+  await closed.agent.handle({ ...message("Encerrar atendimento", "msg-end-closed"), action: "service_end" });
+  await closed.agent.handle({ ...message("Ótimo", "msg-csat-closed"), action: "csat_great" });
+  const fromClosed = await closed.agent.handle(message("Nova Cotacao", "msg-new-closed"));
+  assert.equal(fromClosed.interaction?.kind, "list");
+  assert.equal((await closed.store.load("conversation-1")).stage, "collecting");
 });

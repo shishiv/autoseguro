@@ -266,8 +266,8 @@ function signature(body: Buffer): string {
   return `sha256=${createHmac("sha256", config.appSecret).update(body).digest("hex")}`;
 }
 
-async function startWebhook(context: TestContext, transport: MetaTransport): Promise<string> {
-  const server = createServer(createMetaHttpHandler(config, transport));
+async function startWebhook(context: TestContext, transport: MetaTransport, revision = "unknown"): Promise<string> {
+  const server = createServer(createMetaHttpHandler(config, transport, revision));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   context.after(() => {
     server.closeAllConnections();
@@ -319,9 +319,9 @@ async function intakeRecord(directory: string): Promise<string> {
 
 test("verifica health e o challenge do webhook", async (context) => {
   const testHarness = await harness(context);
-  const baseUrl = await startWebhook(context, testHarness.transport);
+  const baseUrl = await startWebhook(context, testHarness.transport, "996ea56");
   const health = await fetch(`${baseUrl}/health`);
-  assert.deepEqual(await health.json(), { status: "ok" });
+  assert.deepEqual(await health.json(), { status: "ok", revision: "996ea56" });
   const verification = await fetch(
     `${baseUrl}/webhook?hub.mode=subscribe&hub.verify_token=${config.verifyToken}&hub.challenge=12345`,
   );
@@ -535,14 +535,14 @@ test("falha de presença não impede a resposta em texto", async (context) => {
   assert.equal(testHarness.events.find((event) => event.event === "meta_presence")?.status, "failed");
 });
 
-test("lista de planos faz fallback para texto e aceita a resposta interativa", async (context) => {
+test("interações fazem fallback para texto e aceitam a resposta interativa", async (context) => {
   const fallback = await harness(context, [{ fields: {}, intent: "continue", ambiguous: false }], [500, 200]);
   const fallbackUrl = await startWebhook(context, fallback.transport);
   assert.equal((await postWebhook(fallbackUrl, webhookPayload("wamid-list-fallback", "text", "oi"))).status, 200);
   await waitUntil(() => fallback.meta.bodies.length === 2);
   assert.equal(fallback.meta.bodies[0]?.type, "interactive");
   assert.equal(fallback.meta.bodies[1]?.type, "text");
-  assert.match(sentText(fallback.meta, 1), /1\. Essencial/u);
+  assert.match(sentText(fallback.meta, 1), /1\. Começar cotação/u);
 
   const mapped = await harness(context, [{ fields: {}, intent: "continue", ambiguous: false }]);
   const mappedUrl = await startWebhook(context, mapped.transport);

@@ -874,11 +874,12 @@ function verifyWebhook(url: URL, config: MetaRuntimeConfig, response: ServerResp
 export function createMetaHttpHandler(
   config: MetaRuntimeConfig,
   transport: MetaTransport,
+  revision = "unknown",
 ): (request: HttpRequest, response: ServerResponse) => Promise<void> {
   return async (request, response) => {
     const url = new URL(request.url ?? "/", config.publicBaseUrl);
     if (request.method === "GET" && url.pathname === "/health") {
-      sendJson(response, 200, { status: "ok" });
+      sendJson(response, 200, { status: "ok", revision });
       return;
     }
     if (request.method === "GET" && url.pathname === "/webhook") {
