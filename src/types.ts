@@ -11,7 +11,7 @@ export type ConversationStage = "collecting" | "quoting" | "resolved" | "handoff
 export type Outcome = "resolved" | "awaiting_data" | "refused" | "handoff";
 export type MessageType = "text" | "audio" | "image" | "document";
 export type QuoteJobStatus = "pending" | "retrying" | "delivered" | "failed";
-export type ActionId = "quote_start" | "plans_view" | "human_help" | "quote_new" | "service_end" | "csat_great" | "csat_regular" | "csat_bad" | "plan_essencial" | "plan_completo" | "plan_premium";
+export type ActionId = "quote_start" | "plans_view" | "human_help" | "quote_new" | "service_end" | "csat_great" | "csat_regular" | "csat_bad" | "plan_essencial" | "plan_completo" | "plan_premium" | "date_today" | "date_tomorrow" | "date_other";
 
 export interface FieldOrigin {
   message_id: string;
@@ -45,6 +45,12 @@ export interface ProRataPayment {
   valor_primeiro_pagamento: number;
 }
 
+export interface WaitingPeriod {
+  coberturas: string[];
+  dias: number;
+  observacao: string;
+}
+
 export interface QuoteResponse {
   plano_id: string;
   plano_nome: string;
@@ -52,6 +58,7 @@ export interface QuoteResponse {
   franquia: number;
   coberturas: string[];
   moeda: string;
+  carencia: WaitingPeriod;
   primeiro_pagamento_pro_rata?: ProRataPayment;
 }
 

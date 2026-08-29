@@ -185,6 +185,7 @@ function quote(price: number): QuoteResponse {
     franquia: 3000,
     coberturas: ["colisao", "roubo"],
     moeda: "BRL",
+    carencia: { coberturas: ["roubo"], dias: 30, observacao: "Roubo após carência." },
   };
 }
 

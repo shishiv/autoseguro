@@ -7,7 +7,9 @@ import {
   missingFields,
   toQuotePayload,
   validateCandidates,
+  validateField,
 } from "./validation.ts";
+import { planCatalog, type PlanId } from "./plan-catalog.ts";
 import type {
   ActionId,
   AgentReply,
@@ -51,15 +53,23 @@ const fieldQuestions: Record<RequiredFieldName, string> = {
   idade: "Qual é a sua idade?",
   veiculo_ano: "Qual é o ano do veículo?",
   cep: "Qual é o CEP onde o veículo dorme?",
-  data_inicio: "Em que data você quer iniciar a cobertura? Use AAAA-MM-DD.",
+  data_inicio: "Quando quer começar? Escolha Hoje, Amanhã ou envie outra data.",
 };
 const planInteraction: ReplyInteraction = {
   kind: "list",
   button_label: "Ver planos",
   actions: [
-    { id: "plan_essencial", title: "Essencial — roubo e furto" },
-    { id: "plan_completo", title: "Completo — colisão e terceiros" },
-    { id: "plan_premium", title: "Premium — completa e assistência" },
+    { id: "plan_essencial", title: "Essencial — colisão, roubo e furto" },
+    { id: "plan_completo", title: "Completo — terceiros e vidros" },
+    { id: "plan_premium", title: "Premium — carro reserva e assistência" },
+  ],
+};
+const dateInteraction: ReplyInteraction = {
+  kind: "buttons",
+  actions: [
+    { id: "date_today", title: "Hoje" },
+    { id: "date_tomorrow", title: "Amanhã" },
+    { id: "date_other", title: "Outra data" },
   ],
 };
 const quoteActions: ReplyInteraction = {
@@ -89,6 +99,23 @@ const greetingPattern = /^(?:oi|olá|ola|bom dia|boa tarde|boa noite)[!,.\s]*$/i
 function normalizeCommand(value: string): string {
   return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
 }
+
+function isScalarInput(field: RequiredFieldName, text: string): boolean {
+  const value = text.trim();
+  if (field === "plano") {
+    return Object.hasOwn(planCatalog, normalizeCommand(value));
+  }
+  if (field === "idade") {
+    return /^\d+$/u.test(value);
+  }
+  if (field === "veiculo_ano") {
+    return /^\d{4}$/u.test(value);
+  }
+  if (field === "cep") {
+    return /^[\d\s-]+$/u.test(value);
+  }
+  return /^(?:hoje|amanhã|amanha|\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4})$/iu.test(value);
+}
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
 const allowedTransitions: Record<QuoteJobStatus, QuoteJobStatus[]> = {
   pending: ["retrying", "delivered", "failed"],
@@ -112,16 +139,24 @@ function validateMessage(input: IncomingMessage): void {
 function formatMoney(value: number, currency: string): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(value);
 }
+
+function formatDate(value: string): string {
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
+}
+
 function reference(requestId: string): string {
   return createHash("sha256").update(requestId).digest("hex").slice(0, 8);
 }
 
-
-function quoteReply(quote: QuoteResponse, requestId: string): AgentReply {
+function quoteReply(quote: QuoteResponse, requestId: string, startDate: string): AgentReply {
   const monthly = formatMoney(quote.premio_mensal, quote.moeda);
   const deductible = formatMoney(quote.franquia, quote.moeda);
   const firstPayment = quote.primeiro_pagamento_pro_rata
-    ? `Primeiro pagamento: ${formatMoney(quote.primeiro_pagamento_pro_rata.valor_primeiro_pagamento, quote.moeda)}.`
+    ? `Primeiro pagamento proporcional: ${formatMoney(quote.primeiro_pagamento_pro_rata.valor_primeiro_pagamento, quote.moeda)}.`
+    : "";
+  const waiting = quote.carencia.coberturas.length > 0
+    ? `${quote.carencia.coberturas.join(" e ")} passam a valer após ${quote.carencia.dias} dias contados do início da cobertura.`
     : "";
   return {
     text: [
@@ -130,6 +165,8 @@ function quoteReply(quote: QuoteResponse, requestId: string): AgentReply {
       `Mensalidade: ${monthly}`,
       `Franquia: ${deductible}`,
       `Coberturas: ${quote.coberturas.join(", ")}.`,
+      `Início da cobertura: ${formatDate(startDate)}.`,
+      waiting,
       firstPayment,
       `Referência: ${reference(requestId)}`,
     ].filter(Boolean).join("\n"),
@@ -355,14 +392,9 @@ export class AutoSeguroAgent {
       await this.writeAudit("message", state, input.message_id, duplicate.outcome);
       return duplicate;
     }
-    if (input.action) {
-      return this.processAction(state, input.message_id, input.action);
-    }
-    if (input.message_type === "text" && normalizeCommand(input.text) === "nova cotacao") {
-      return this.newQuote(state, input.message_id);
-    }
-    if (input.message_type === "text" && greetingPattern.test(input.text) && state.stage === "collecting") {
-      return this.welcome(state, input.message_id);
+    const deterministic = await this.deterministicReply(state, input);
+    if (deterministic) {
+      return deterministic;
     }
     if (["resolved", "handoff", "closed"].includes(state.stage)) {
       return this.finish(state, input.message_id, terminalReply(state), "message");
@@ -377,6 +409,27 @@ export class AutoSeguroAgent {
     return state.stage === "quoting"
       ? this.processPending(state, input.message_id, understanding)
       : this.processCollecting(state, input.message_id, understanding);
+  }
+
+  private async deterministicReply(
+    state: ConversationState,
+    input: IncomingMessage,
+  ): Promise<AgentReply | null> {
+    if (input.action) {
+      return this.processAction(state, input.message_id, input.action);
+    }
+    if (input.message_type !== "text") {
+      return null;
+    }
+    if (normalizeCommand(input.text) === "nova cotacao") {
+      return this.newQuote(state, input.message_id);
+    }
+    if (greetingPattern.test(input.text) && state.stage === "collecting") {
+      return this.welcome(state, input.message_id);
+    }
+    return state.stage === "collecting"
+      ? this.collectScalar(state, input.message_id, input.text)
+      : null;
   }
 
   private async understand(
@@ -394,6 +447,23 @@ export class AutoSeguroAgent {
     }
   }
 
+  private async collectScalar(
+    state: ConversationState,
+    messageId: string,
+    text: string,
+  ): Promise<AgentReply | null> {
+    const field = missingFields(state.fields)[0];
+    if (!field || !isScalarInput(field, text)) {
+      return null;
+    }
+    const validated = validateField(field, text, this.timestamp().slice(0, 10));
+    state.fields = mergeFields(state.fields, validated.values, messageId, "deterministic");
+    const missing = missingFields(state.fields);
+    return validated.errors.length > 0 || missing.length > 0
+      ? this.awaitData(state, messageId, missing, validated.errors)
+      : this.startQuote(state, messageId, false);
+  }
+
   private async processCollecting(
     state: ConversationState,
     messageId: string,
@@ -409,7 +479,7 @@ export class AutoSeguroAgent {
       return this.handleAmbiguity(state, messageId, false);
     }
     state.ambiguity_count = 0;
-    const validated = validateCandidates(understanding.fields);
+    const validated = validateCandidates(understanding.fields, this.timestamp().slice(0, 10));
     state.fields = mergeFields(state.fields, validated.values, messageId, this.fieldSource);
     const missing = missingFields(state.fields);
     if (validated.errors.length > 0 || missing.length > 0) {
@@ -440,7 +510,7 @@ export class AutoSeguroAgent {
         "message",
       );
     }
-    const validated = validateCandidates(understanding.fields);
+    const validated = validateCandidates(understanding.fields, this.timestamp().slice(0, 10));
     if (validated.errors.length > 0) {
       return this.pendingInformation(state, messageId, `Não consegui validar: ${validated.errors.join(" e ")}.`);
     }
@@ -492,7 +562,7 @@ export class AutoSeguroAgent {
       text: `${issue}\n\n${question}`,
       outcome: "awaiting_data",
       quote_request_id: null,
-      ...(field === "plano" ? { interaction: planInteraction } : {}),
+      ...(field === "plano" ? { interaction: planInteraction } : field === "data_inicio" ? { interaction: dateInteraction } : {}),
     }, "message");
   }
 
@@ -655,7 +725,7 @@ export class AutoSeguroAgent {
     transitionJob(job, "delivered", this.timestamp(), null);
     state.stage = "resolved";
     state.quote = quote;
-    const reply = quoteReply(quote, job.request_id);
+    const reply = quoteReply(quote, job.request_id, job.payload.data_inicio);
     this.enqueue(state, job, reply);
     await this.store.save(state);
     await this.writeAudit("quote_completed", state, job.initiated_by_message_id, "resolved", { job });
@@ -725,12 +795,15 @@ export class AutoSeguroAgent {
     if (action in csatRatings) {
       return this.recordCsat(state, messageId, csatRatings[action as keyof typeof csatRatings]);
     }
+    if (action === "date_today" || action === "date_tomorrow" || action === "date_other") {
+      return this.chooseDate(state, messageId, action);
+    }
     switch (action) {
       case "human_help":
         return this.handoff(state, messageId, "human_requested");
       case "plans_view":
         return this.finish(state, messageId, {
-          text: "Escolha um plano para seguir.",
+          text: "Escolha um plano para comparar ou seguir.",
           outcome: stateOutcome(state),
           quote_request_id: state.active_quote_request_id,
           interaction: planInteraction,
@@ -747,12 +820,50 @@ export class AutoSeguroAgent {
     return this.finish(state, messageId, terminalReply(state), "message");
   }
 
-  private async selectPlan(state: ConversationState, messageId: string, plan: string): Promise<AgentReply> {
+  private async selectPlan(state: ConversationState, messageId: string, plan: PlanId): Promise<AgentReply> {
     if (state.stage !== "collecting") {
       return this.finish(state, messageId, terminalReply(state), "message");
     }
     state.fields = mergeFields(state.fields, { plano: plan }, messageId, "deterministic");
-    return this.awaitData(state, messageId, missingFields(state.fields), []);
+    const details = planCatalog[plan];
+    return this.finish(state, messageId, {
+      text: [
+        `Plano ${details.nome}`,
+        `Coberturas: ${details.coberturas.join(", ")}.`,
+        `Franquia: ${formatMoney(details.franquia, "BRL")}.`,
+        "Roubo e furto passam a valer após 30 dias contados do início da cobertura.",
+        "Quer seguir com este plano?",
+      ].join("\n"),
+      outcome: "awaiting_data",
+      quote_request_id: null,
+      interaction: {
+        kind: "buttons",
+        actions: [
+          { id: "quote_start", title: "Continuar" },
+          { id: "plans_view", title: "Comparar planos" },
+          { id: "human_help", title: "Falar com uma pessoa" },
+        ],
+      },
+    }, "message");
+  }
+
+  private async chooseDate(
+    state: ConversationState,
+    messageId: string,
+    action: "date_today" | "date_tomorrow" | "date_other",
+  ): Promise<AgentReply> {
+    if (state.stage !== "collecting" || !missingFields(state.fields).includes("data_inicio")) {
+      return this.finish(state, messageId, terminalReply(state), "message");
+    }
+    if (action === "date_other") {
+      return this.finish(state, messageId, {
+        text: "Envie a data em DD/MM/AAAA.",
+        outcome: "awaiting_data",
+        quote_request_id: null,
+      }, "message");
+    }
+    const selected = await this.collectScalar(state, messageId, action === "date_today" ? "hoje" : "amanhã");
+    return selected ?? this.awaitData(state, messageId, missingFields(state.fields), []);
   }
 
   private async newQuote(state: ConversationState, messageId: string): Promise<AgentReply> {
