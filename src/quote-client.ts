@@ -6,6 +6,7 @@ import type {
   QuotePayload,
   QuoteResponse,
   QuoteResult,
+  WaitingPeriod,
 } from "./types.ts";
 
 interface QuoteClientOptions {
@@ -56,19 +57,38 @@ function parseProRata(value: unknown): ProRataPayment | null {
   };
 }
 
+function parseWaitingPeriod(value: unknown): WaitingPeriod | null {
+  if (
+    !isRecord(value)
+    || !Array.isArray(value.coberturas)
+    || !value.coberturas.every((item) => typeof item === "string")
+    || typeof value.dias !== "number"
+    || !Number.isInteger(value.dias)
+    || value.dias < 0
+    || typeof value.observacao !== "string"
+  ) {
+    return null;
+  }
+  return { coberturas: value.coberturas, dias: value.dias, observacao: value.observacao };
+}
+
 function parseQuote(value: unknown): QuoteResponse | null {
   if (!isRecord(value)) {
     return null;
   }
   if (
-    typeof value.plano_id !== "string" ||
-    typeof value.plano_nome !== "string" ||
-    !isMoney(value.premio_mensal) ||
-    !isMoney(value.franquia) ||
-    !Array.isArray(value.coberturas) ||
-    !value.coberturas.every((item) => typeof item === "string") ||
-    value.moeda !== "BRL"
+    typeof value.plano_id !== "string"
+    || typeof value.plano_nome !== "string"
+    || !isMoney(value.premio_mensal)
+    || !isMoney(value.franquia)
+    || !Array.isArray(value.coberturas)
+    || !value.coberturas.every((item) => typeof item === "string")
+    || value.moeda !== "BRL"
   ) {
+    return null;
+  }
+  const carencia = parseWaitingPeriod(value.carencia);
+  if (!carencia) {
     return null;
   }
   const quote: QuoteResponse = {
@@ -78,6 +98,7 @@ function parseQuote(value: unknown): QuoteResponse | null {
     franquia: value.franquia,
     coberturas: value.coberturas,
     moeda: value.moeda,
+    carencia,
   };
   if (value.primeiro_pagamento_pro_rata !== undefined) {
     const proRata = parseProRata(value.primeiro_pagamento_pro_rata);

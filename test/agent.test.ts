@@ -126,6 +126,11 @@ function successfulQuote(overrides: Partial<QuoteResponse> = {}): QuoteResponse 
     franquia: 3000,
     coberturas: ["colisao", "roubo", "furto", "terceiros", "vidros"],
     moeda: "BRL",
+    carencia: {
+      coberturas: ["roubo", "furto"],
+      dias: 30,
+      observacao: "Coberturas de roubo e furto so passam a valer apos a carencia.",
+    },
     ...overrides,
   };
 }
@@ -223,6 +228,10 @@ async function makeHarness(
 async function makeDeferredHarness(
   context: TestContext,
   responses: LanguageUnderstanding[],
+  createId: () => string = (() => {
+    let id = 0;
+    return () => `quote-request-${id += 1}`;
+  })(),
 ): Promise<{
   agent: AutoSeguroAgent;
   store: FileConversationStore;
@@ -235,10 +244,9 @@ async function makeDeferredHarness(
   const store = new FileConversationStore(join(directory, "state"));
   const auditPath = join(directory, "audit.jsonl");
   const client = new DeferredQuoteClient();
-  let id = 0;
   return {
     agent: new AutoSeguroAgent(store, new AuditLog(auditPath), new StubLlm(responses), client, {
-      createId: () => `quote-request-${id += 1}`,
+      createId,
       now: () => new Date("2026-08-28T12:00:00.000Z"),
     }),
     store,
@@ -378,7 +386,7 @@ for (const scenario of [
     const state = await harness.store.load("conversation-1");
     assert.equal(pending.outcome, "awaiting_data");
     assert.equal(terminal?.outcome, "handoff");
-    assert.match(terminal?.text ?? "", /API recusou/u);
+    assert.match(terminal?.text ?? "", /Não foi possível seguir/u);
     assert.doesNotMatch(terminal?.text ?? "", /R\$/u);
     assert.equal(harness.requests.length, 1);
     assert.equal(state.stage, "handoff");
@@ -474,7 +482,7 @@ test("500, 502 e 503 esgotam três tentativas e criam handoff", async (context) 
   const [terminal] = await collectTerminal(harness.agent);
   const state = await harness.store.load("conversation-1");
   assert.equal(terminal?.outcome, "handoff");
-  assert.match(terminal?.text ?? "", /não vou estimar um preço/u);
+  assert.match(terminal?.text ?? "", /Não consegui concluir/u);
   assert.equal(harness.requests.length, 3);
   assert.equal(state.handoff_reason, "quote_service_unavailable");
   assert.equal(state.quote_jobs[0]?.status, "failed");
@@ -514,7 +522,7 @@ test("duplicata, status e informação durante pending não criam outra cotaçã
   ]);
   assert.deepEqual(duplicate, first);
   assert.equal(status.outcome, "awaiting_data");
-  assert.match(status.text, /segue em processamento/u);
+  assert.match(status.text, /em andamento/u);
   assert.match(information.text, /coberturas/u);
   const [terminal] = await collectTerminal(harness.agent);
   const state = await harness.store.load("conversation-1");
@@ -635,6 +643,7 @@ test("auditoria mascara PII e registra o ciclo assíncrono", async (context) => 
         "attempt",
         "collected_fields",
         "conversation_id",
+        "csat_rating",
         "event",
         "failure_kind",
         "handoff_reason",
@@ -712,3 +721,216 @@ test("redação de PII preserva IDs de correlação", () => {
   assert.equal(redactSensitiveText("CPF 123.456.789-00"), "CPF <cpf_redacted>");
   assert.equal(redactSensitiveText("Telefone +55 11 99999-8888"), "Telefone <phone_redacted>");
 });
+
+test("saúda uma vez e inicia a coleta sem chamar o LLM", async (context) => {
+  const harness = await makeDeferredHarness(context, []);
+  const first = await harness.agent.handle(message("Oi", "msg-greeting"));
+  assert.match(first.text, /Eu sou a AutoSeguro/u);
+  assert.deepEqual(first.interaction?.actions.map((action) => action.id), ["quote_start", "plans_view", "human_help"]);
+  const plan = await harness.agent.handle({ ...message("Completo", "msg-plan"), action: "plan_completo" });
+  assert.match(plan.text, /Coberturas: Colisão, Roubo, Furto, Terceiros, Vidros/u);
+  assert.doesNotMatch(plan.text, /Eu sou a AutoSeguro/u);
+  const next = await harness.agent.handle({ ...message("Continuar", "msg-continue"), action: "quote_start" });
+  assert.match(next.text, /Qual é a sua idade/u);
+  assert.equal((await harness.store.load("conversation-1")).fields.plano?.value, "completo");
+});
+
+test("novo orçamento e ajuda humana usam ações determinísticas", async (context) => {
+  const harness = await makeHarness(context, [understanding(completeFields())], () => ({ status: 200, body: successfulQuote() }));
+  await harness.agent.handle(message());
+  await collectTerminal(harness.agent);
+  const next = await harness.agent.handle({ ...message("Nova cotação", "msg-new"), action: "quote_new" });
+  assert.equal(next.interaction?.kind, "list");
+  const help = await harness.agent.handle({ ...message("Falar com uma pessoa", "msg-help"), action: "human_help" });
+  assert.equal(help.outcome, "handoff");
+  assert.equal((await harness.store.load("conversation-1")).awaiting_csat, false);
+});
+
+for (const [action, rating] of [["csat_great", "great"], ["csat_regular", "regular"], ["csat_bad", "bad"]] as const) {
+  test(`encerra uma cotação resolvida e persiste CSAT ${rating}`, async (context) => {
+    const harness = await makeHarness(context, [understanding(completeFields())], () => ({ status: 200, body: successfulQuote() }));
+    await harness.agent.handle(message());
+    await collectTerminal(harness.agent);
+    const question = await harness.agent.handle({ ...message("Encerrar atendimento", "msg-end"), action: "service_end" });
+    assert.deepEqual(question.interaction?.actions.map((item) => item.id), ["csat_great", "csat_regular", "csat_bad"]);
+    const thanks = await harness.agent.handle({ ...message(rating, `msg-${action}`), action });
+    assert.match(thanks.text, /Obrigado pela avaliação/u);
+    const state = await harness.store.load("conversation-1");
+    assert.equal(state.stage, "closed");
+    assert.equal(state.csat_rating, rating);
+    const events = (await readFile(harness.auditPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    assert.deepEqual(events.at(-1), expectCsat(rating));
+  });
+}
+
+function expectCsat(rating: "great" | "regular" | "bad"): Record<string, unknown> {
+  return {
+    event: "csat",
+    conversation_id: "conversation-1",
+    message_id: `msg-csat_${rating}`,
+    timestamp: "2026-08-28T12:00:00.000Z",
+    stage: "closed",
+    collected_fields: {
+      plano: { value: "completo", origin: { message_id: "msg-1", source: "llm" } },
+      idade: { value: 35, origin: { message_id: "msg-1", source: "llm" } },
+      veiculo_ano: { value: 2022, origin: { message_id: "msg-1", source: "llm" } },
+      cep: { value: "01***-***", origin: { message_id: "msg-1", source: "llm" } },
+      data_inicio: { value: "2026-09-01", origin: { message_id: "msg-1", source: "llm" } },
+    },
+    quote_request_id: "quote-request-1",
+    quote_status: "delivered",
+    attempt: null,
+    latency_ms: null,
+    http_status: null,
+    outcome: "resolved",
+    handoff_reason: null,
+    failure_kind: null,
+    csat_rating: rating,
+  };
+}
+
+test("mensagens ao cliente ocultam termos técnicos e IDs internos", async (context) => {
+  const requestId = "7a466a1e-2f61-4eda-be04-e89367271429";
+  const finalRequestId = "9e6ab6f3-a24e-4dd9-bf69-5d3d08a5fdc5";
+  const ids = [requestId, finalRequestId];
+  const happy = await makeDeferredHarness(context, [
+    understanding(completeFields()),
+    understanding({}, "status"),
+    understanding({ plano: "premium" }, "information"),
+    understanding({ idade: 36 }),
+  ], () => ids.shift() ?? finalRequestId);
+  const visible = [
+    await happy.agent.handle(message()),
+    await happy.agent.handle(message("Já conseguiu?", "msg-status")),
+    await happy.agent.handle(message("E as coberturas?", "msg-information")),
+    await happy.agent.handle(message("Na verdade tenho 36 anos", "msg-correction")),
+  ];
+  await waitForCalls(happy.client, 2);
+  await happy.client.succeed(1, 225.5);
+  visible.push(...await collectTerminal(happy.agent));
+  visible.push(await happy.agent.handle(message("Quero ver minha cotação", "msg-resolved")));
+  visible.push(await happy.agent.handle({ ...message("Encerrar atendimento", "msg-end"), action: "service_end" }));
+  visible.push(await happy.agent.handle({ ...message("Ótimo", "msg-csat"), action: "csat_great" }));
+  visible.push(await happy.agent.handle(message("Oi", "msg-closed")));
+
+  const refused = await makeHarness(
+    context,
+    [understanding(completeFields())],
+    () => ({ status: 422, body: { error: "cotacao_recusada" } }),
+  );
+  visible.push(await refused.agent.handle(message()));
+  visible.push(...await collectTerminal(refused.agent));
+
+  const failed = await makeHarness(
+    context,
+    [understanding(completeFields())],
+    () => ({ status: 503, body: { error: "upstream_unavailable" } }),
+  );
+  visible.push(await failed.agent.handle(message()));
+  visible.push(...await collectTerminal(failed.agent));
+
+  const customerText = visible.map((reply) => reply.text).join("\n");
+  assert.doesNotMatch(customerText, /\b(?:api|http|retry|attempts?|tentativas?|processamento|protocolo)\b|segundo plano|background/iu);
+  assert.doesNotMatch(customerText, /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/iu);
+  assert.match(customerText, /Referência: [0-9a-f]{8}/u);
+  const state = await happy.store.load("conversation-1");
+  assert.equal(state.active_quote_request_id, finalRequestId);
+  const audit = await readFile(happy.auditPath, "utf8");
+  assert.match(audit, new RegExp(requestId, "u"));
+  assert.match(audit, new RegExp(finalRequestId, "u"));
+});
+
+test("nova cotação em texto recupera estados terminais sem o LLM", async (context) => {
+  const handoff = await makeDeferredHarness(context, []);
+  await handoff.agent.handle({ ...message("mensagem de voz", "msg-media"), message_type: "audio" });
+  const fromHandoff = await handoff.agent.handle(message("NOVA COTACAO", "msg-new-handoff"));
+  assert.equal(fromHandoff.interaction?.kind, "list");
+  assert.equal((await handoff.store.load("conversation-1")).stage, "collecting");
+
+  const resolved = await makeHarness(context, [understanding(completeFields())], () => ({ status: 200, body: successfulQuote() }));
+  await resolved.agent.handle(message());
+  await collectTerminal(resolved.agent);
+  const fromResolved = await resolved.agent.handle(message("nova cotação", "msg-new-resolved"));
+  assert.equal(fromResolved.interaction?.kind, "list");
+  assert.equal((await resolved.store.load("conversation-1")).stage, "collecting");
+
+  const closed = await makeHarness(context, [understanding(completeFields())], () => ({ status: 200, body: successfulQuote() }));
+  await closed.agent.handle(message());
+  await collectTerminal(closed.agent);
+  await closed.agent.handle({ ...message("Encerrar atendimento", "msg-end-closed"), action: "service_end" });
+  await closed.agent.handle({ ...message("Ótimo", "msg-csat-closed"), action: "csat_great" });
+  const fromClosed = await closed.agent.handle(message("Nova Cotacao", "msg-new-closed"));
+  assert.equal(fromClosed.interaction?.kind, "list");
+  assert.equal((await closed.store.load("conversation-1")).stage, "collecting");
+});
+
+test("aceita escalares e datas sem chamar o LLM", async (context) => {
+  const harness = await makeDeferredHarness(context, []);
+  await harness.agent.handle(message("oi", "msg-hello"));
+  await harness.agent.handle({ ...message("Completo", "msg-plan-scalar"), action: "plan_completo" });
+  await harness.agent.handle({ ...message("Continuar", "msg-start-scalar"), action: "quote_start" });
+  const age = await harness.agent.handle(message("30", "msg-age"));
+  assert.match(age.text, /Qual é o ano do veículo/u);
+  const year = await harness.agent.handle(message("2020", "msg-year"));
+  assert.match(year.text, /CEP/u);
+  const cep = await harness.agent.handle(message("01310-100", "msg-cep"));
+  assert.deepEqual(cep.interaction?.actions.map((item) => item.id), ["date_today", "date_tomorrow", "date_other"]);
+  await harness.agent.handle({ ...message("Outra data", "msg-other-date"), action: "date_other" });
+  const date = await harness.agent.handle(message("25/09/2026", "msg-date"));
+  assert.equal(date.outcome, "awaiting_data");
+  await waitForCalls(harness.client, 1);
+  const state = await harness.store.load("conversation-1");
+  assert.deepEqual(Object.fromEntries(Object.entries(state.fields).map(([name, value]) => [name, value.value])), {
+    plano: "completo",
+    idade: 30,
+    veiculo_ano: 2020,
+    cep: "01310-100",
+    data_inicio: "2026-09-25",
+  });
+});
+
+test("rejeita data passada e explica a carência devolvida na cotação", async (context) => {
+  const harness = await makeHarness(
+    context,
+    [understanding(completeFields({ data_inicio: "2026-09-15" }))],
+    () => ({
+      status: 200,
+      body: successfulQuote({ primeiro_pagamento_pro_rata: { dias_no_mes: 30, dias_cobrados: 16, valor_primeiro_pagamento: 111.95 } }),
+    }),
+  );
+  await harness.agent.handle(message());
+  const [quote] = await collectTerminal(harness.agent);
+  assert.match(quote?.text ?? "", /Início da cobertura: 15\/09\/2026/u);
+  assert.match(quote?.text ?? "", /roubo e furto passam a valer após 30 dias/u);
+  assert.match(quote?.text ?? "", /Primeiro pagamento proporcional/u);
+
+  const dates = await makeDeferredHarness(context, []);
+  await dates.agent.handle(message("oi", "msg-date-hello"));
+  await dates.agent.handle({ ...message("Completo", "msg-date-plan"), action: "plan_completo" });
+  await dates.agent.handle({ ...message("Continuar", "msg-date-start"), action: "quote_start" });
+  await dates.agent.handle(message("30", "msg-date-age"));
+  await dates.agent.handle(message("2020", "msg-date-year"));
+  await dates.agent.handle(message("01310-100", "msg-date-cep"));
+  const invalid = await dates.agent.handle(message("01/01/2020", "msg-past-date"));
+  assert.match(invalid.text, /data de início inválido/u);
+});
+
+for (const [action, name, deductible, required, excluded] of [
+  ["plan_essencial", "Essencial", "4.500", ["Colisão", "Roubo", "Furto"], ["Terceiros", "Vidros", "Carro reserva", "Assistência"]],
+  ["plan_completo", "Completo", "3.000", ["Colisão", "Roubo", "Furto", "Terceiros", "Vidros"], ["Carro reserva", "Assistência"]],
+  ["plan_premium", "Premium", "1.500", ["Colisão", "Roubo", "Furto", "Terceiros", "Vidros", "Carro reserva", "Assistência"], []],
+] as const) {
+  test(`explica o catálogo oficial do plano ${name} sem misturar benefícios`, async (context) => {
+    const harness = await makeDeferredHarness(context, []);
+    await harness.agent.handle(message("oi", "msg-catalog-hello"));
+    const reply = await harness.agent.handle({ ...message(name, `msg-${action}`), action });
+    assert.match(reply.text, new RegExp(`Plano ${name}`, "u"));
+    assert.match(reply.text, new RegExp(`Franquia: R\\$\\s*${deductible.replace(".", "\\.")}`, "u"));
+    assert.match(reply.text, /Roubo e furto passam a valer após 30 dias/u);
+    for (const coverage of required) assert.match(reply.text, new RegExp(coverage, "u"));
+    for (const coverage of excluded) assert.doesNotMatch(reply.text, new RegExp(coverage, "u"));
+    assert.doesNotMatch(reply.text, /119,90|209,90|339,90/u);
+    const comparison = await harness.agent.handle({ ...message("Comparar planos", `msg-compare-${action}`), action: "plans_view" });
+    assert.equal(comparison.interaction?.kind, "list");
+  });
+}

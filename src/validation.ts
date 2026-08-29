@@ -44,8 +44,28 @@ function normalizeCep(value: unknown): string | null {
   return digits.length === 8 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : null;
 }
 
-function normalizeDate(value: unknown): string | null {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) {
+function normalizeDate(value: unknown, currentDate: string): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const text = value.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
+  const today = parseIsoDate(currentDate);
+  if (!today) {
+    return null;
+  }
+  if (text === "hoje" || text === "amanha") {
+    const date = new Date(today);
+    date.setUTCDate(date.getUTCDate() + (text === "amanha" ? 1 : 0));
+    return date.toISOString().slice(0, 10);
+  }
+  const parts = /^([0-9]{2})\/([0-9]{2})\/([0-9]{4})$/u.exec(text);
+  const iso = parts ? `${parts[3]}-${parts[2]}-${parts[1]}` : text;
+  const date = parseIsoDate(iso);
+  return date && date >= today ? iso : null;
+}
+
+function parseIsoDate(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) {
     return null;
   }
   const [year, month, day] = value.split("-").map(Number);
@@ -54,7 +74,7 @@ function normalizeDate(value: unknown): string | null {
   }
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-    ? value
+    ? date
     : null;
 }
 
@@ -76,7 +96,10 @@ function assignIfPresent<T>(
   Object.assign(values, { [name]: normalized });
 }
 
-export function validateCandidates(candidates: CandidateFields): ValidationResult {
+export function validateCandidates(
+  candidates: CandidateFields,
+  currentDate = new Date().toISOString().slice(0, 10),
+): ValidationResult {
   const values: ValidatedValues = {};
   const errors: string[] = [];
   assignIfPresent(candidates.plano, normalizePlan(candidates.plano), "plano", "plano", values, errors);
@@ -92,13 +115,21 @@ export function validateCandidates(candidates: CandidateFields): ValidationResul
   assignIfPresent(candidates.cep, normalizeCep(candidates.cep), "cep", "CEP", values, errors);
   assignIfPresent(
     candidates.data_inicio,
-    normalizeDate(candidates.data_inicio),
+    normalizeDate(candidates.data_inicio, currentDate),
     "data_inicio",
     "data de início",
     values,
     errors,
   );
   return { values, errors };
+}
+
+export function validateField(
+  name: RequiredFieldName,
+  value: unknown,
+  currentDate: string,
+): ValidationResult {
+  return validateCandidates({ [name]: value }, currentDate);
 }
 
 export function mergeFields(
