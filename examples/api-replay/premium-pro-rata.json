@@ -1,0 +1,651 @@
+{
+  "label": "API-emulated hybrid",
+  "scenario": "premium-pro-rata",
+  "outcome": "resolved",
+  "elapsed_ms": 3422,
+  "llm": {
+    "endpoint": "https://ollama.com",
+    "model": "deepseek-v4-flash:0731",
+    "understand_calls": 1
+  },
+  "quote_service": {
+    "identity": "namastex-fde-challenge/quote-service",
+    "source_sha256": "4965678b3a83779353961bc782949030031b554b448f70e30d46c259413cd64b",
+    "attempts": [
+      {
+        "http_status": 200,
+        "latency_ms": 3,
+        "will_retry": false
+      }
+    ]
+  },
+  "capture": [
+    {
+      "at_ms": 217,
+      "http_status": 200,
+      "shape": "presence",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "synthetic-wamid",
+        "typing_indicator": {
+          "type": "text"
+        }
+      }
+    },
+    {
+      "at_ms": 219,
+      "http_status": 200,
+      "shape": "button-send",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": "synthetic-recipient",
+        "type": "interactive",
+        "interactive": {
+          "type": "button",
+          "body": {
+            "text": "Olá! Eu sou a AutoSeguro. Em poucos passos, monto sua cotação. Os valores são definidos pela seguradora.\n\nComo você quer seguir?"
+          },
+          "action": {
+            "buttons": [
+              {
+                "type": "reply",
+                "reply": {
+                  "id": "quote_start",
+                  "title": "Começar cotação"
+                }
+              },
+              {
+                "type": "reply",
+                "reply": {
+                  "id": "plans_view",
+                  "title": "Ver planos"
+                }
+              },
+              {
+                "type": "reply",
+                "reply": {
+                  "id": "human_help",
+                  "title": "Falar com uma pessoa"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "at_ms": 239,
+      "http_status": 200,
+      "shape": "presence",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "synthetic-wamid",
+        "typing_indicator": {
+          "type": "text"
+        }
+      }
+    },
+    {
+      "at_ms": 242,
+      "http_status": 200,
+      "shape": "list-send",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": "synthetic-recipient",
+        "type": "interactive",
+        "interactive": {
+          "type": "list",
+          "body": {
+            "text": "Escolha um plano para comparar ou seguir."
+          },
+          "action": {
+            "button": "Ver planos",
+            "sections": [
+              {
+                "title": "Planos",
+                "rows": [
+                  {
+                    "id": "plan_essencial",
+                    "title": "Essencial",
+                    "description": "colisão, roubo e furto"
+                  },
+                  {
+                    "id": "plan_completo",
+                    "title": "Completo",
+                    "description": "terceiros e vidros"
+                  },
+                  {
+                    "id": "plan_premium",
+                    "title": "Premium",
+                    "description": "carro reserva e assistência"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "at_ms": 3274,
+      "http_status": 200,
+      "shape": "presence",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "synthetic-wamid",
+        "typing_indicator": {
+          "type": "text"
+        }
+      }
+    },
+    {
+      "at_ms": 3277,
+      "http_status": 200,
+      "shape": "list-send",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": "synthetic-recipient",
+        "type": "interactive",
+        "interactive": {
+          "type": "list",
+          "body": {
+            "text": "Vamos seguir.\n\nQual plano você quer conhecer?"
+          },
+          "action": {
+            "button": "Ver planos",
+            "sections": [
+              {
+                "title": "Planos",
+                "rows": [
+                  {
+                    "id": "plan_essencial",
+                    "title": "Essencial",
+                    "description": "colisão, roubo e furto"
+                  },
+                  {
+                    "id": "plan_completo",
+                    "title": "Completo",
+                    "description": "terceiros e vidros"
+                  },
+                  {
+                    "id": "plan_premium",
+                    "title": "Premium",
+                    "description": "carro reserva e assistência"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "at_ms": 3290,
+      "http_status": 200,
+      "shape": "presence",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "synthetic-wamid",
+        "typing_indicator": {
+          "type": "text"
+        }
+      }
+    },
+    {
+      "at_ms": 3293,
+      "http_status": 200,
+      "shape": "button-send",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": "synthetic-recipient",
+        "type": "interactive",
+        "interactive": {
+          "type": "button",
+          "body": {
+            "text": "Plano Premium\nCoberturas: Colisão, Roubo, Furto, Terceiros, Vidros, Carro reserva, Assistência 24h.\nFranquia: R$ 1.500,00.\nRoubo e furto passam a valer após 30 dias contados do início da cobertura.\nQuer seguir com este plano?"
+          },
+          "action": {
+            "buttons": [
+              {
+                "type": "reply",
+                "reply": {
+                  "id": "quote_start",
+                  "title": "Continuar"
+                }
+              },
+              {
+                "type": "reply",
+                "reply": {
+                  "id": "plans_view",
+                  "title": "Comparar planos"
+                }
+              },
+              {
+                "type": "reply",
+                "reply": {
+                  "id": "human_help",
+                  "title": "Falar com uma pessoa"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "at_ms": 3313,
+      "http_status": 200,
+      "shape": "presence",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "synthetic-wamid",
+        "typing_indicator": {
+          "type": "text"
+        }
+      }
+    },
+    {
+      "at_ms": 3315,
+      "http_status": 200,
+      "shape": "text-send",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": "synthetic-recipient",
+        "type": "text",
+        "text": {
+          "body": "Vamos seguir.\n\nQual é a sua idade?"
+        }
+      }
+    },
+    {
+      "at_ms": 3336,
+      "http_status": 200,
+      "shape": "presence",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "synthetic-wamid",
+        "typing_indicator": {
+          "type": "text"
+        }
+      }
+    },
+    {
+      "at_ms": 3339,
+      "http_status": 200,
+      "shape": "text-send",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": "synthetic-recipient",
+        "type": "text",
+        "text": {
+          "body": "Vamos seguir.\n\nQual é o ano do veículo?"
+        }
+      }
+    },
+    {
+      "at_ms": 3358,
+      "http_status": 200,
+      "shape": "presence",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "synthetic-wamid",
+        "typing_indicator": {
+          "type": "text"
+        }
+      }
+    },
+    {
+      "at_ms": 3361,
+      "http_status": 200,
+      "shape": "text-send",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": "synthetic-recipient",
+        "type": "text",
+        "text": {
+          "body": "Vamos seguir.\n\nQual é o CEP onde o veículo dorme?"
+        }
+      }
+    },
+    {
+      "at_ms": 3381,
+      "http_status": 200,
+      "shape": "presence",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "synthetic-wamid",
+        "typing_indicator": {
+          "type": "text"
+        }
+      }
+    },
+    {
+      "at_ms": 3383,
+      "http_status": 200,
+      "shape": "button-send",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": "synthetic-recipient",
+        "type": "interactive",
+        "interactive": {
+          "type": "button",
+          "body": {
+            "text": "Vamos seguir.\n\nQuando quer começar? Escolha Hoje, Amanhã ou envie outra data."
+          },
+          "action": {
+            "buttons": [
+              {
+                "type": "reply",
+                "reply": {
+                  "id": "date_today",
+                  "title": "Hoje"
+                }
+              },
+              {
+                "type": "reply",
+                "reply": {
+                  "id": "date_tomorrow",
+                  "title": "Amanhã"
+                }
+              },
+              {
+                "type": "reply",
+                "reply": {
+                  "id": "date_other",
+                  "title": "Outra data"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "at_ms": 3404,
+      "http_status": 200,
+      "shape": "presence",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "synthetic-wamid",
+        "typing_indicator": {
+          "type": "text"
+        }
+      }
+    },
+    {
+      "at_ms": 3406,
+      "http_status": 200,
+      "shape": "text-send",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": "synthetic-recipient",
+        "type": "text",
+        "text": {
+          "body": "Recebi seus dados. Vou preparar sua cotação e aviso assim que estiver pronta."
+        }
+      }
+    },
+    {
+      "at_ms": 3410,
+      "http_status": 200,
+      "shape": "presence",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "synthetic-wamid",
+        "typing_indicator": {
+          "type": "text"
+        }
+      }
+    },
+    {
+      "at_ms": 3412,
+      "http_status": 200,
+      "shape": "button-send",
+      "payload": {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": "synthetic-recipient",
+        "type": "interactive",
+        "interactive": {
+          "type": "button",
+          "body": {
+            "text": "Sua cotação está pronta.\nPlano: Premium\nMensalidade: R$ 441,87\nFranquia: R$ 1.500,00\nCoberturas: colisao, roubo, furto, terceiros, vidros, carro_reserva, assistencia_24h.\nInício da cobertura: 15/09/2026.\nroubo e furto passam a valer após 30 dias contados do início da cobertura.\nPrimeiro pagamento proporcional: R$ 235,66.\nReferência: d96c02e4"
+          },
+          "action": {
+            "buttons": [
+              {
+                "type": "reply",
+                "reply": {
+                  "id": "quote_new",
+                  "title": "Nova cotação"
+                }
+              },
+              {
+                "type": "reply",
+                "reply": {
+                  "id": "human_help",
+                  "title": "Falar com uma pessoa"
+                }
+              },
+              {
+                "type": "reply",
+                "reply": {
+                  "id": "service_end",
+                  "title": "Encerrar atendimento"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "transcript": [
+    {
+      "at_ms": 214,
+      "role": "lead",
+      "text": "Olá",
+      "kind": "text"
+    },
+    {
+      "at_ms": 219,
+      "role": "autoseguro",
+      "text": "Olá! Eu sou a AutoSeguro. Em poucos passos, monto sua cotação. Os valores são definidos pela seguradora.\n\nComo você quer seguir?",
+      "kind": "interactive",
+      "action_ids": [
+        "quote_start",
+        "plans_view",
+        "human_help"
+      ]
+    },
+    {
+      "at_ms": 235,
+      "role": "lead",
+      "text": "plans_view",
+      "kind": "interactive",
+      "action_ids": [
+        "plans_view"
+      ]
+    },
+    {
+      "at_ms": 242,
+      "role": "autoseguro",
+      "text": "Escolha um plano para comparar ou seguir.",
+      "kind": "interactive",
+      "action_ids": [
+        "plan_essencial",
+        "plan_completo",
+        "plan_premium"
+      ]
+    },
+    {
+      "at_ms": 257,
+      "role": "lead",
+      "text": "Quero entender as opções de seguro.",
+      "kind": "text"
+    },
+    {
+      "at_ms": 3277,
+      "role": "autoseguro",
+      "text": "Vamos seguir.\n\nQual plano você quer conhecer?",
+      "kind": "interactive",
+      "action_ids": [
+        "plan_essencial",
+        "plan_completo",
+        "plan_premium"
+      ]
+    },
+    {
+      "at_ms": 3286,
+      "role": "lead",
+      "text": "plan_premium",
+      "kind": "interactive",
+      "action_ids": [
+        "plan_premium"
+      ]
+    },
+    {
+      "at_ms": 3293,
+      "role": "autoseguro",
+      "text": "Plano Premium\nCoberturas: Colisão, Roubo, Furto, Terceiros, Vidros, Carro reserva, Assistência 24h.\nFranquia: R$ 1.500,00.\nRoubo e furto passam a valer após 30 dias contados do início da cobertura.\nQuer seguir com este plano?",
+      "kind": "interactive",
+      "action_ids": [
+        "quote_start",
+        "plans_view",
+        "human_help"
+      ]
+    },
+    {
+      "at_ms": 3308,
+      "role": "lead",
+      "text": "quote_start",
+      "kind": "interactive",
+      "action_ids": [
+        "quote_start"
+      ]
+    },
+    {
+      "at_ms": 3315,
+      "role": "autoseguro",
+      "text": "Vamos seguir.\n\nQual é a sua idade?",
+      "kind": "text"
+    },
+    {
+      "at_ms": 3331,
+      "role": "lead",
+      "text": "35",
+      "kind": "text"
+    },
+    {
+      "at_ms": 3339,
+      "role": "autoseguro",
+      "text": "Vamos seguir.\n\nQual é o ano do veículo?",
+      "kind": "text"
+    },
+    {
+      "at_ms": 3354,
+      "role": "lead",
+      "text": "2023",
+      "kind": "text"
+    },
+    {
+      "at_ms": 3361,
+      "role": "autoseguro",
+      "text": "Vamos seguir.\n\nQual é o CEP onde o veículo dorme?",
+      "kind": "text"
+    },
+    {
+      "at_ms": 3376,
+      "role": "lead",
+      "text": "07***-***",
+      "kind": "text"
+    },
+    {
+      "at_ms": 3383,
+      "role": "autoseguro",
+      "text": "Vamos seguir.\n\nQuando quer começar? Escolha Hoje, Amanhã ou envie outra data.",
+      "kind": "interactive",
+      "action_ids": [
+        "date_today",
+        "date_tomorrow",
+        "date_other"
+      ]
+    },
+    {
+      "at_ms": 3399,
+      "role": "lead",
+      "text": "15/09/2026",
+      "kind": "text"
+    },
+    {
+      "at_ms": 3406,
+      "role": "autoseguro",
+      "text": "Recebi seus dados. Vou preparar sua cotação e aviso assim que estiver pronta.",
+      "kind": "text"
+    },
+    {
+      "at_ms": 3412,
+      "role": "autoseguro",
+      "text": "Sua cotação está pronta.\nPlano: Premium\nMensalidade: R$ 441,87\nFranquia: R$ 1.500,00\nCoberturas: colisao, roubo, furto, terceiros, vidros, carro_reserva, assistencia_24h.\nInício da cobertura: 15/09/2026.\nroubo e furto passam a valer após 30 dias contados do início da cobertura.\nPrimeiro pagamento proporcional: R$ 235,66.\nReferência: d96c02e4",
+      "kind": "interactive",
+      "action_ids": [
+        "quote_new",
+        "human_help",
+        "service_end"
+      ]
+    }
+  ],
+  "effects": {
+    "quote_statuses": [
+      "delivered"
+    ],
+    "outbox_delivered": true,
+    "csat_rating": null,
+    "handoff_reason": null,
+    "audit_events": [
+      "message",
+      "message",
+      "message",
+      "message",
+      "message",
+      "message",
+      "message",
+      "message",
+      "quote_started",
+      "quote_attempt",
+      "quote_completed",
+      "outbox_delivered"
+    ],
+    "interaction_fallback": false
+  },
+  "assertions": [
+    "signed byte-exact webhook intake",
+    "presence before visible replies",
+    "accepted Meta text/list/button shapes",
+    "outbound text/list/button payload shapes",
+    "official quote service is the price authority",
+    "no full UUID or credential-bearing header persisted",
+    "high-risk CEP",
+    "pro-rata",
+    "carro reserva and 24h assistance"
+  ]
+}

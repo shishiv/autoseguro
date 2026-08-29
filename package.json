@@ -12,9 +12,10 @@
     "meta:provision": "node --env-file-if-exists=.env src/provision-meta.ts",
     "meta:smoke": "node --env-file-if-exists=.env src/provision-meta.ts --smoke",
     "evaluate": "npm test && node --env-file-if-exists=.env src/evaluate.ts",
+    "api:replay": "node --env-file-if-exists=.env scripts/api-replay.ts",
     "test": "node --test --test-concurrency=1 test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint src test",
+    "lint": "oxlint src test scripts",
     "check": "npm run typecheck && npm run lint && npm test"
   },
   "devDependencies": {

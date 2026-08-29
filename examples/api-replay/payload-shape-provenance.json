@@ -1,0 +1,141 @@
+{
+  "label": "API-emulated hybrid",
+  "source_shapes": [
+    {
+      "source": "test/meta.test.ts",
+      "sha256": "c652f31569a3343e5da12d347672ea0889763ffe8af2d4d7c7d5712f9490a215"
+    },
+    {
+      "source": "ai-logs/sessions/2026-08-28-meta-pilot.jsonl",
+      "sha256": "91764bc0f89f49365cef9c9c639e1e5b00e8ac8c4933bf711386e930962fe7ab"
+    },
+    {
+      "source": "docs/meta-provisioning-evidence.json",
+      "sha256": "f0f616430a832cf5b47b57e325cc52658300963f578ca940e410540b166ce884"
+    }
+  ],
+  "public_meta_docs": [
+    "https://developers.facebook.com/documentation/business-messaging/whatsapp/solution-providers/manage-webhooks",
+    "https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/override/"
+  ],
+  "synthetic_replacements": [
+    "WABA",
+    "phone number ID",
+    "recipient",
+    "wamid",
+    "callback",
+    "timestamp",
+    "app ID",
+    "token",
+    "PIN",
+    "profile"
+  ],
+  "fixtures": {
+    "text": {
+      "type": "text",
+      "text": {
+        "body": "synthetic text"
+      }
+    },
+    "interactive_list_reply": {
+      "type": "interactive",
+      "interactive": {
+        "type": "list_reply",
+        "list_reply": {
+          "id": "plan_completo",
+          "title": "Completo"
+        }
+      }
+    },
+    "interactive_button_reply": {
+      "type": "interactive",
+      "interactive": {
+        "type": "button_reply",
+        "button_reply": {
+          "id": "quote_start",
+          "title": "Continuar"
+        }
+      }
+    },
+    "presence": {
+      "messaging_product": "whatsapp",
+      "status": "read",
+      "message_id": "wamid.synthetic",
+      "typing_indicator": {
+        "type": "text"
+      }
+    },
+    "text_send": {
+      "messaging_product": "whatsapp",
+      "recipient_type": "individual",
+      "to": "synthetic-recipient",
+      "type": "text",
+      "text": {
+        "body": "synthetic visible reply"
+      }
+    },
+    "list_send": {
+      "messaging_product": "whatsapp",
+      "recipient_type": "individual",
+      "to": "synthetic-recipient",
+      "type": "interactive",
+      "interactive": {
+        "type": "list",
+        "body": {
+          "text": "synthetic visible reply"
+        },
+        "action": {
+          "button": "Ver planos",
+          "sections": [
+            {
+              "title": "Planos",
+              "rows": [
+                {
+                  "id": "plan_completo",
+                  "title": "Completo",
+                  "description": "terceiros e vidros"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "button_send": {
+      "messaging_product": "whatsapp",
+      "recipient_type": "individual",
+      "to": "synthetic-recipient",
+      "type": "interactive",
+      "interactive": {
+        "type": "button",
+        "body": {
+          "text": "synthetic visible reply"
+        },
+        "action": {
+          "buttons": [
+            {
+              "type": "reply",
+              "reply": {
+                "id": "quote_start",
+                "title": "Continuar"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "graph_response": {
+      "messaging_product": "whatsapp",
+      "contacts": [
+        {
+          "wa_id": "synthetic-recipient"
+        }
+      ],
+      "messages": [
+        {
+          "id": "wamid.capture.1"
+        }
+      ]
+    }
+  }
+}

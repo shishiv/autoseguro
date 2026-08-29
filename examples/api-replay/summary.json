@@ -1,0 +1,303 @@
+{
+  "label": "API-emulated hybrid",
+  "results": [
+    {
+      "label": "API-emulated hybrid",
+      "scenario": "essencial-csat",
+      "outcome": "closed",
+      "elapsed_ms": 1600,
+      "llm": {
+        "endpoint": "https://ollama.com",
+        "model": "deepseek-v4-flash:0731",
+        "understand_calls": 1
+      },
+      "quote_service": {
+        "identity": "namastex-fde-challenge/quote-service",
+        "source_sha256": "4965678b3a83779353961bc782949030031b554b448f70e30d46c259413cd64b",
+        "attempts": [
+          {
+            "http_status": 200,
+            "latency_ms": 3,
+            "will_retry": false
+          }
+        ]
+      },
+      "effects": {
+        "quote_statuses": [
+          "delivered"
+        ],
+        "outbox_delivered": true,
+        "csat_rating": "great",
+        "handoff_reason": null,
+        "audit_events": [
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "quote_started",
+          "quote_attempt",
+          "quote_completed",
+          "outbox_delivered",
+          "message",
+          "csat"
+        ],
+        "interaction_fallback": true
+      },
+      "assertions": [
+        "signed byte-exact webhook intake",
+        "presence before visible replies",
+        "accepted Meta text/list/button shapes",
+        "outbound text/list/button payload shapes",
+        "official quote service is the price authority",
+        "no full UUID or credential-bearing header persisted",
+        "Essencial education",
+        "bare scalar age",
+        "relative pt-BR date",
+        "interactive text fallback",
+        "CSAT close"
+      ]
+    },
+    {
+      "label": "API-emulated hybrid",
+      "scenario": "completo-reselect",
+      "outcome": "resolved",
+      "elapsed_ms": 1439,
+      "llm": {
+        "endpoint": "https://ollama.com",
+        "model": "deepseek-v4-flash:0731",
+        "understand_calls": 1
+      },
+      "quote_service": {
+        "identity": "namastex-fde-challenge/quote-service",
+        "source_sha256": "4965678b3a83779353961bc782949030031b554b448f70e30d46c259413cd64b",
+        "attempts": [
+          {
+            "http_status": 200,
+            "latency_ms": 3,
+            "will_retry": false
+          }
+        ]
+      },
+      "effects": {
+        "quote_statuses": [
+          "delivered"
+        ],
+        "outbox_delivered": true,
+        "csat_rating": null,
+        "handoff_reason": null,
+        "audit_events": [
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "quote_started",
+          "quote_attempt",
+          "quote_completed",
+          "outbox_delivered"
+        ],
+        "interaction_fallback": false
+      },
+      "assertions": [
+        "signed byte-exact webhook intake",
+        "presence before visible replies",
+        "accepted Meta text/list/button shapes",
+        "outbound text/list/button payload shapes",
+        "official quote service is the price authority",
+        "no full UUID or credential-bearing header persisted",
+        "plan compare and reselect",
+        "terceiros and vidros education",
+        "30-day waiting period",
+        "pt-BR date"
+      ]
+    },
+    {
+      "label": "API-emulated hybrid",
+      "scenario": "premium-pro-rata",
+      "outcome": "resolved",
+      "elapsed_ms": 3422,
+      "llm": {
+        "endpoint": "https://ollama.com",
+        "model": "deepseek-v4-flash:0731",
+        "understand_calls": 1
+      },
+      "quote_service": {
+        "identity": "namastex-fde-challenge/quote-service",
+        "source_sha256": "4965678b3a83779353961bc782949030031b554b448f70e30d46c259413cd64b",
+        "attempts": [
+          {
+            "http_status": 200,
+            "latency_ms": 3,
+            "will_retry": false
+          }
+        ]
+      },
+      "effects": {
+        "quote_statuses": [
+          "delivered"
+        ],
+        "outbox_delivered": true,
+        "csat_rating": null,
+        "handoff_reason": null,
+        "audit_events": [
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "quote_started",
+          "quote_attempt",
+          "quote_completed",
+          "outbox_delivered"
+        ],
+        "interaction_fallback": false
+      },
+      "assertions": [
+        "signed byte-exact webhook intake",
+        "presence before visible replies",
+        "accepted Meta text/list/button shapes",
+        "outbound text/list/button payload shapes",
+        "official quote service is the price authority",
+        "no full UUID or credential-bearing header persisted",
+        "high-risk CEP",
+        "pro-rata",
+        "carro reserva and 24h assistance"
+      ]
+    },
+    {
+      "label": "API-emulated hybrid",
+      "scenario": "slow-status-success",
+      "outcome": "resolved",
+      "elapsed_ms": 9481,
+      "llm": {
+        "endpoint": "https://ollama.com",
+        "model": "deepseek-v4-flash:0731",
+        "understand_calls": 2
+      },
+      "quote_service": {
+        "identity": "namastex-fde-challenge/quote-service",
+        "source_sha256": "4965678b3a83779353961bc782949030031b554b448f70e30d46c259413cd64b",
+        "attempts": [
+          {
+            "http_status": 200,
+            "latency_ms": 8004,
+            "will_retry": false
+          }
+        ]
+      },
+      "effects": {
+        "quote_statuses": [
+          "delivered"
+        ],
+        "outbox_delivered": true,
+        "csat_rating": null,
+        "handoff_reason": null,
+        "audit_events": [
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "quote_started",
+          "message",
+          "quote_attempt",
+          "quote_completed",
+          "outbox_delivered"
+        ],
+        "interaction_fallback": false
+      },
+      "assertions": [
+        "signed byte-exact webhook intake",
+        "presence before visible replies",
+        "accepted Meta text/list/button shapes",
+        "outbound text/list/button payload shapes",
+        "official quote service is the price authority",
+        "no full UUID or credential-bearing header persisted",
+        "real approximately eight-second official-service delay",
+        "pending status remains responsive"
+      ]
+    },
+    {
+      "label": "API-emulated hybrid",
+      "scenario": "five-xx-handoff",
+      "outcome": "handoff",
+      "elapsed_ms": 3757,
+      "llm": {
+        "endpoint": "https://ollama.com",
+        "model": "deepseek-v4-flash:0731",
+        "understand_calls": 1
+      },
+      "quote_service": {
+        "identity": "namastex-fde-challenge/quote-service",
+        "source_sha256": "4965678b3a83779353961bc782949030031b554b448f70e30d46c259413cd64b",
+        "attempts": [
+          {
+            "http_status": 500,
+            "latency_ms": 2,
+            "will_retry": true
+          },
+          {
+            "http_status": 502,
+            "latency_ms": 3,
+            "will_retry": true
+          },
+          {
+            "http_status": 502,
+            "latency_ms": 3,
+            "will_retry": false
+          }
+        ]
+      },
+      "effects": {
+        "quote_statuses": [
+          "failed"
+        ],
+        "outbox_delivered": true,
+        "csat_rating": null,
+        "handoff_reason": "quote_service_unavailable",
+        "audit_events": [
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "message",
+          "quote_started",
+          "quote_attempt",
+          "quote_attempt",
+          "quote_attempt",
+          "handoff",
+          "outbox_delivered"
+        ],
+        "interaction_fallback": false
+      },
+      "assertions": [
+        "signed byte-exact webhook intake",
+        "presence before visible replies",
+        "accepted Meta text/list/button shapes",
+        "outbound text/list/button payload shapes",
+        "official quote service is the price authority",
+        "no full UUID or credential-bearing header persisted",
+        "three official-service 5xx attempts",
+        "context-rich handoff without price or infrastructure jargon"
+      ]
+    }
+  ]
+}
