@@ -8,6 +8,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - Keep source code comment-free. Put rationale in `README.md`.
 - Do not fabricate `ai-logs/` or the real conversation under `examples/`; those artifacts must come from actual runs.
 - Treat the Meta channel as test-WABA-only. Use the guarded commands and rollback in `README.md`; preserve the app's canonical callback.
+- Use [`.cursor/skills/verify-autoseguro/SKILL.md`](.cursor/skills/verify-autoseguro/SKILL.md) for isolated signed-webhook E2E proof; its helper blocks non-loopback traffic.
 
 ## Maintaining this file
 
