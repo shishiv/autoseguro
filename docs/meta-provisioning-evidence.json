@@ -1,5 +1,5 @@
 {
-  "verified_at": "2026-08-28T23:34:37.226030Z",
+  "verified_at": "2026-08-29T00:31:13.502444Z",
   "deployment": {
     "isolation": "dedicated Dokploy project, compose service, volume, and domain",
     "domain": "autoseguro.triangulotec.com.br",
@@ -18,7 +18,9 @@
     "webhook_configuration": {
       "whatsapp_business_account": "https://autoseguro.triangulotec.com.br/webhook",
       "application": "https://api.triangulotec.com.br/webhook"
-    }
+    },
+    "status": "CONNECTED",
+    "registered_at": "2026-08-28T23:59:03Z"
   },
   "canonical_phone": {
     "id": "************8621",
@@ -33,7 +35,39 @@
     "unchanged": true
   },
   "live_round_trip": {
-    "status": "pending",
-    "reason": "confirmed allowlisted recipient not yet supplied"
+    "status": "resolved",
+    "bootstrap": {
+      "accepted_at": "2026-08-28T23:59:21Z",
+      "outbound_message_id": "sha256:1c5ca25e72a944214d91c9dce7e385086f0c69fe81e65ebc7c58552f856cb73e"
+    },
+    "collection": {
+      "inbound_message_id": "sha256:f2ef33f1df35bacff8edca12484634b21ab2f17d703f665f253605ed14bf1956",
+      "received_at": "2026-08-29T00:08:39.851Z",
+      "reply_at": "2026-08-29T00:08:42.997Z",
+      "reply_latency_ms": 3146,
+      "outcome": "awaiting_data"
+    },
+    "quote": {
+      "inbound_message_id": "sha256:b0a305dcd09ee317f8674d90863e555d4ae51642af370ec067def0cbe48ce8c5",
+      "received_at": "2026-08-29T00:09:00.005Z",
+      "acknowledged_at": "2026-08-29T00:09:02.469Z",
+      "acknowledgement_ms": 2464,
+      "final_at": "2026-08-29T00:09:02.974Z",
+      "final_after_ack_ms": 505,
+      "immediate_outbound_message_id": "sha256:c6b10b4b392dc9de51fa22956c5538e1d5c84d4d316fd26f8cce5555e360dc32",
+      "final_outbound_message_id": "sha256:a7b14dc58cff10be54874c264fc6798946d33e21525d0513cba17c5f6bec4198",
+      "quote_request_id": "sha256:9770cfc29da82341ec20af45ad9c31ab4ea30a1f15cfeed9331c4c23363ca082",
+      "quote_attempts": 1,
+      "attempt_http_statuses": [
+        200
+      ],
+      "outcome": "resolved",
+      "fabricated_price": false
+    },
+    "privacy": {
+      "payloads_erased": true,
+      "raw_phone_or_message_body_recorded": false
+    },
+    "handoff_live_proof": "not_run; deterministic handoff remains covered by the local fake-Meta integration test"
   }
 }

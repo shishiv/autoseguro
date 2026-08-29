@@ -225,7 +225,7 @@ O rollback primeiro faz `POST /<WABA_ID>/subscribed_apps` sem corpo para remover
 
 ### Prova WhatsApp
 
-O número de teste pode permanecer `NOT_VERIFIED` e com qualidade `UNKNOWN`. O Meta só aceita o destinatário de teste previamente autorizado. Faça o round trip manualmente pelo WhatsApp desse destinatário; `wacli` é opcional e nunca é necessário para instalar, provisionar ou concluir o teste.
+O número de teste pode permanecer com `code_verification_status=NOT_VERIFIED` e qualidade `UNKNOWN`, mas seu status de API precisa ser `CONNECTED`. O Meta só aceita o destinatário de teste previamente autorizado. Faça o round trip manualmente pelo WhatsApp desse destinatário; `wacli` é opcional e nunca é necessário para instalar, provisionar ou concluir o teste.
 
 Registre somente horários, IDs truncados ou hashados, contagem de tentativas e resultado. [`docs/meta-live-evidence.example.json`](docs/meta-live-evidence.example.json) define o formato sem telefone, texto ou token. [`docs/meta-provisioning-evidence.json`](docs/meta-provisioning-evidence.json) registra o deploy e as pós-condições atuais. A prova deve mostrar a confirmação imediata e, em execuções isoladas, uma cotação tardia e um handoff após três falhas. Um volume descartável por cenário evita misturar estados sem tocar tráfego de produção.
 
