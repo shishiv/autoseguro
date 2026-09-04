@@ -366,6 +366,23 @@ class FakePeers {
       await this.handleQuote(context, request, body, response);
       return;
     }
+    if (url.pathname === "/quote-service/planos") {
+      sendJson(response, 200, {
+        moeda: "BRL",
+        planos: [
+          { id: "essencial", nome: "Essencial", base_mensal: 119.9, franquia: 4500, coberturas: ["colisao", "roubo", "furto"] },
+          { id: "completo", nome: "Completo", base_mensal: 209.9, franquia: 3000, coberturas: ["colisao", "roubo", "furto", "terceiros", "vidros"] },
+          { id: "premium", nome: "Premium", base_mensal: 339.9, franquia: 1500, coberturas: ["colisao", "roubo", "furto", "terceiros", "vidros", "carro_reserva", "assistencia_24h"] },
+        ],
+        regras: {
+          carencia: {
+            coberturas_com_carencia: ["roubo", "furto"],
+            dias: 30,
+          },
+        },
+      });
+      return;
+    }
     if (url.pathname === `/graph/v25.0/${metaPhoneNumberId}/messages`) {
       await this.handleGraph(context, body, response);
       return;

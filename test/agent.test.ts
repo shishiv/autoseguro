@@ -142,6 +142,23 @@ function successfulQuote(overrides: Partial<QuoteResponse> = {}): QuoteResponse 
   };
 }
 
+function officialPlansFixture(): Record<string, unknown> {
+  return {
+    moeda: "BRL",
+    planos: [
+      { id: "essencial", nome: "Essencial", base_mensal: 119.9, franquia: 4500, coberturas: ["colisao", "roubo", "furto"] },
+      { id: "completo", nome: "Completo", base_mensal: 209.9, franquia: 3000, coberturas: ["colisao", "roubo", "furto", "terceiros", "vidros"] },
+      { id: "premium", nome: "Premium", base_mensal: 339.9, franquia: 1500, coberturas: ["colisao", "roubo", "furto", "terceiros", "vidros", "carro_reserva", "assistencia_24h"] },
+    ],
+    regras: {
+      carencia: {
+        coberturas_com_carencia: ["roubo", "furto"],
+        dias: 30,
+      },
+    },
+  };
+}
+
 async function bodyOf(request: HttpRequest): Promise<QuotePayload> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
@@ -733,11 +750,12 @@ test("redação de PII preserva IDs de correlação", () => {
 
 test("saúda uma vez e inicia a coleta sem chamar o LLM", async (context) => {
   const harness = await makeDeferredHarness(context, []);
+  harness.client.plans = officialPlansFixture();
   const first = await harness.agent.handle(message("Oi", "msg-greeting"));
   assert.match(first.text, /Eu sou a AutoSeguro/u);
   assert.deepEqual(first.interaction?.actions.map((action) => action.id), ["quote_start", "plans_view", "human_help"]);
   const plan = await harness.agent.handle({ ...message("Completo", "msg-plan"), action: "plan_completo" });
-  assert.match(plan.text, /Coberturas: Colisão, Roubo, Furto, Terceiros, Vidros/u);
+  assert.match(plan.text, /Coberturas: Colis[aã]o, Roubo, Furto, Terceiros, Vidros/iu);
   assert.doesNotMatch(plan.text, /Eu sou a AutoSeguro/u);
   const next = await harness.agent.handle({ ...message("Continuar", "msg-continue"), action: "quote_start" });
   assert.match(next.text, /Qual é a sua idade/u);
@@ -939,6 +957,7 @@ for (const [action, name, deductible, required, excluded] of [
 ] as const) {
   test(`explica o catálogo oficial do plano ${name} sem misturar benefícios`, async (context) => {
     const harness = await makeDeferredHarness(context, []);
+    harness.client.plans = officialPlansFixture();
     await harness.agent.handle(message("oi", "msg-catalog-hello"));
     const reply = await harness.agent.handle({ ...message(name, `msg-${action}`), action });
     assert.match(reply.text, new RegExp(`Plano ${name}`, "u"));
@@ -956,6 +975,7 @@ test("informação sobre plano durante a coleta explica benefícios e mantém a 
   const harness = await makeDeferredHarness(context, [
     understanding({ plano: "premium" }, "information"),
   ]);
+  harness.client.plans = officialPlansFixture();
   const reply = await harness.agent.handle(message("O plano Premium tem carro reserva?", "msg-info"));
   assert.equal(reply.outcome, "awaiting_data");
   assert.match(reply.text, /Plano Premium/u);
@@ -989,7 +1009,25 @@ test("informação de planos prioriza catálogo remoto validado sem expor preço
   assert.equal((await harness.store.load("conversation-1")).fields.plano, undefined);
 });
 
-test("catálogo remoto inválido usa o snapshot local", async (context) => {
+test("catálogo remoto indisponível não inventa valores locais e informa indisponibilidade", async (context) => {
+  const harness = await makeDeferredHarness(context, []);
+  harness.client.plans = null;
+  await harness.agent.handle(message("oi", "msg-unavailable-hello"));
+  const reply = await harness.agent.handle({ ...message("Essencial", "msg-plan-essencial"), action: "plan_essencial" });
+  assert.match(reply.text, /Plano Essencial/u);
+  assert.match(reply.text, /detalhes oficiais de coberturas e franquia estão indisponíveis/u);
+  assert.doesNotMatch(reply.text, /4\.500|30 dias|Colisão|Roubo/u);
+
+  const summary = await harness.agent.handle({ ...message("Comparar planos", "msg-view-plans"), action: "plans_view" });
+  assert.match(summary.text, /Planos disponíveis/u);
+  assert.match(summary.text, /Essencial/u);
+  assert.match(summary.text, /Completo/u);
+  assert.match(summary.text, /Premium/u);
+  assert.match(summary.text, /detalhes oficiais de coberturas e franquia estão indisponíveis/u);
+  assert.doesNotMatch(summary.text, /4\.500|3\.000|1\.500|30 dias/u);
+});
+
+test("catálogo remoto inválido não inventa valores locais e informa indisponibilidade", async (context) => {
   const harness = await makeDeferredHarness(context, [understanding({ plano: "premium" }, "information")]);
   harness.client.plans = {
     moeda: "USD",
@@ -997,18 +1035,21 @@ test("catálogo remoto inválido usa o snapshot local", async (context) => {
   };
   const reply = await harness.agent.handle(message("O Premium tem assistência?", "msg-invalid-catalog"));
   assert.match(reply.text, /Plano Premium/u);
-  assert.match(reply.text, /Assistência 24h/u);
-  assert.match(reply.text, /1\.500,00/u);
+  assert.match(reply.text, /detalhes oficiais de coberturas e franquia estão indisponíveis/u);
+  assert.doesNotMatch(reply.text, /1\.500|Assistência 24h|30 dias/u);
 });
 
-test("catálogo remoto sem regra de carência usa trinta dias", async (context) => {
+test("catálogo remoto sem regra de carência não inventa carência presumida", async (context) => {
   const harness = await makeDeferredHarness(context, [understanding({ plano: "premium" }, "information")]);
   harness.client.plans = {
     moeda: "BRL",
     planos: [{ id: "premium", nome: "Premium Remoto", franquia: 7777, coberturas: ["vidros"] }],
   };
   const reply = await harness.agent.handle(message("O Premium cobre vidros?", "msg-default-waiting"));
-  assert.match(reply.text, /Roubo e Furto passam a valer após 30 dias/u);
+  assert.match(reply.text, /Plano Premium Remoto/u);
+  assert.match(reply.text, /7\.777,00/u);
+  assert.match(reply.text, /Vidros/u);
+  assert.doesNotMatch(reply.text, /30 dias|Roubo|Furto/u);
 });
 
 test("ajuda humana após cotação preserva o resultado entregue", async (context) => {

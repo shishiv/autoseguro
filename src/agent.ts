@@ -58,8 +58,8 @@ interface RemotePlan {
 interface RemotePlanCatalog {
   currency: "BRL";
   planos: RemotePlan[];
-  waitingCoverages: string[];
-  waitingDays: number;
+  waitingCoverages?: string[];
+  waitingDays?: number;
 }
 
 const fieldQuestions: Record<RequiredFieldName, string> = {
@@ -230,23 +230,20 @@ function isWaitingDays(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
-function parseRemoteWaiting(value: unknown): Pick<RemotePlanCatalog, "waitingCoverages" | "waitingDays"> | null {
-  const fallback = { waitingCoverages: ["roubo", "furto"], waitingDays: 30 };
-  if (value === undefined) {
-    return fallback;
-  }
-  if (!isRecord(value) || (value.carencia !== undefined && !isRecord(value.carencia))) {
+function parseRemoteWaiting(value: unknown): { waitingCoverages: string[]; waitingDays: number } | null {
+  if (!isRecord(value) || !isRecord(value.carencia)) {
     return null;
   }
-  if (!isRecord(value.carencia)) {
-    return fallback;
+  const dias = value.carencia.dias;
+  const coberturas = value.carencia.coberturas_com_carencia;
+  if (!isWaitingDays(dias)) {
+    return null;
   }
-  const waitingDays = isWaitingDays(value.carencia.dias) ? value.carencia.dias : 30;
-  if (value.carencia.coberturas_com_carencia === undefined) {
-    return { ...fallback, waitingDays };
+  const waitingCoverages = parseNonEmptyStrings(coberturas);
+  if (!waitingCoverages || waitingCoverages.length === 0) {
+    return null;
   }
-  const waitingCoverages = parseNonEmptyStrings(value.carencia.coberturas_com_carencia);
-  return waitingCoverages ? { waitingCoverages, waitingDays } : null;
+  return { waitingCoverages, waitingDays: dias };
 }
 
 function parseRemotePlanCatalog(remote: Record<string, unknown> | null): RemotePlanCatalog | null {
@@ -254,35 +251,63 @@ function parseRemotePlanCatalog(remote: Record<string, unknown> | null): RemoteP
     return null;
   }
   const planos = parseRemotePlans(remote.planos);
+  if (!planos || planos.length === 0) {
+    return null;
+  }
   const waiting = parseRemoteWaiting(remote.regras);
-  return planos && waiting ? { currency: remote.moeda, planos, ...waiting } : null;
+  return {
+    currency: remote.moeda,
+    planos,
+    ...waiting,
+  };
 }
 
+const coverageLabels: Record<string, string> = {
+  colisao: "Colisão",
+  roubo: "Roubo",
+  furto: "Furto",
+  terceiros: "Terceiros",
+  vidros: "Vidros",
+  carro_reserva: "Carro reserva",
+  assistencia_24h: "Assistência 24h",
+};
+
 function formatCoverage(value: string): string {
+  const label = coverageLabels[value];
+  if (label) {
+    return label;
+  }
   const normalized = value.replaceAll("_", " ");
   return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
 }
 
 function formatWaitingPeriod(coverages: string[], days: number): string {
-  const subject = coverages.map(formatCoverage).join(" e ");
-  return `${subject} ${coverages.length === 1 ? "passa" : "passam"} a valer após ${days} dias contados do início da cobertura.`;
+  const subject = coverages.map((c) => formatCoverage(c).toLowerCase()).join(" e ");
+  const capitalized = `${subject.charAt(0).toUpperCase()}${subject.slice(1)}`;
+  return `${capitalized} ${coverages.length === 1 ? "passa" : "passam"} a valer após ${days} dias contados do início da cobertura.`;
 }
 
 function explainRemotePlan(plan: RemotePlan, catalog: RemotePlanCatalog): string {
-  return [
+  const lines = [
     `Plano ${plan.nome}`,
     `Coberturas: ${plan.coberturas.map(formatCoverage).join(", ")}.`,
     `Franquia: ${formatMoney(plan.franquia, catalog.currency)}.`,
-    formatWaitingPeriod(catalog.waitingCoverages, catalog.waitingDays),
-  ].join("\n");
+  ];
+  if (catalog.waitingCoverages && catalog.waitingDays !== undefined) {
+    lines.push(formatWaitingPeriod(catalog.waitingCoverages, catalog.waitingDays));
+  }
+  return lines.join("\n");
 }
 
 function formatRemotePlanCatalog(catalog: RemotePlanCatalog): string {
-  return [
+  const lines = [
     "Planos disponíveis:",
     ...catalog.planos.map((plan) => `• ${plan.nome} — ${plan.coberturas.map(formatCoverage).join(", ")}. Franquia: ${formatMoney(plan.franquia, catalog.currency)}.`),
-    formatWaitingPeriod(catalog.waitingCoverages, catalog.waitingDays),
-  ].join("\n");
+  ];
+  if (catalog.waitingCoverages && catalog.waitingDays !== undefined) {
+    lines.push(formatWaitingPeriod(catalog.waitingCoverages, catalog.waitingDays));
+  }
+  return lines.join("\n");
 }
 
 function formatDate(value: string): string {
@@ -435,24 +460,19 @@ function pendingStatusReply(state: ConversationState, information: boolean): Age
   };
 }
 
-function formatPlanCatalogSummary(): string {
+function formatUnavailableCatalogSummary(): string {
   return [
     "Planos disponíveis:",
-    "• Essencial — colisão, roubo e furto. Franquia: R$ 4.500,00.",
-    "• Completo — adiciona terceiros e vidros. Franquia: R$ 3.000,00.",
-    "• Premium — adiciona carro reserva e assistência 24h. Franquia: R$ 1.500,00.",
-    "Roubo e furto passam a valer após 30 dias contados do início da cobertura.",
+    "• Essencial",
+    "• Completo",
+    "• Premium",
+    "Os detalhes oficiais de coberturas e franquia estão indisponíveis no momento e serão confirmados na cotação.",
   ].join("\n");
 }
 
-function explainPlanDetails(plan: PlanId): string {
-  const details = planCatalog[plan];
-  return [
-    `Plano ${details.nome}`,
-    `Coberturas: ${details.coberturas.join(", ")}.`,
-    `Franquia: ${formatMoney(details.franquia, "BRL")}.`,
-    "Roubo e furto passam a valer após 30 dias contados do início da cobertura.",
-  ].join("\n");
+function explainUnavailablePlan(plan: PlanId): string {
+  const name = planCatalog[plan]?.nome ?? plan;
+  return `Plano ${name}. Os detalhes oficiais de coberturas e franquia estão indisponíveis no momento e serão confirmados na cotação.`;
 }
 
 function refusalReply(requestId: string, reason?: string | null): AgentReply {
@@ -635,17 +655,19 @@ export class AutoSeguroAgent {
   private async explainPlan(queriedPlan?: string | null): Promise<string> {
     const normalized = typeof queriedPlan === "string" ? normalizeCommand(queriedPlan) : null;
     const localPlan = normalized && Object.hasOwn(planCatalog, normalized) ? normalized as PlanId : null;
-    const fallback = localPlan ? explainPlanDetails(localPlan) : formatPlanCatalogSummary();
-    let catalog: RemotePlanCatalog | null;
+    let catalog: RemotePlanCatalog | null = null;
     try {
       catalog = parseRemotePlanCatalog(await this.quoteClient.fetchPlans());
     } catch {
-      return fallback;
+      catalog = null;
     }
     if (!catalog) {
-      return fallback;
+      return localPlan ? explainUnavailablePlan(localPlan) : formatUnavailableCatalogSummary();
     }
     const plan = normalized ? catalog.planos.find((candidate) => candidate.id === normalized) : undefined;
+    if (normalized && !plan) {
+      return localPlan ? explainUnavailablePlan(localPlan) : formatRemotePlanCatalog(catalog);
+    }
     return plan ? explainRemotePlan(plan, catalog) : formatRemotePlanCatalog(catalog);
   }
 
@@ -1056,8 +1078,9 @@ export class AutoSeguroAgent {
       return this.finish(state, messageId, terminalReply(state), "message");
     }
     state.fields = mergeFields(state.fields, { plano: plan }, messageId, "deterministic");
+    const explanation = await this.explainPlan(plan);
     return this.finish(state, messageId, {
-      text: `${explainPlanDetails(plan)}\nQuer seguir com este plano?`,
+      text: `${explanation}\nQuer seguir com este plano?`,
       outcome: "awaiting_data",
       quote_request_id: null,
       interaction: {
