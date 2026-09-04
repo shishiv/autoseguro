@@ -11,6 +11,7 @@ This package records the AI-assisted work that produced AutoSeguro for the KHAL 
 5. [WhatsApp UX](sessions/2026-08-29-whatsapp-ux.jsonl) — PR 3.
 6. [Verification-skill builder](sessions/2026-08-29-verification-skill-builder.jsonl) — PR 4 and the first 200-journey campaign.
 7. [Independent audit](sessions/2026-08-29-independent-audit.jsonl) — a clean-context rerun and review.
+8. [2026-09-04 Antigravity & Maestri CX Review](sessions/2026-09-04-antigravity-maestri-review.jsonl) — multi-agent review, Khal.ai CX philosophy alignment, and flow upgrades.
 
 Each JSONL file is UTF-8 and chronological. Records preserve human prompts, visible assistant text, tool names, sanitized arguments and results, timestamps, public links, and public commits. Omitted material appears as a typed record with a SHA-256 digest, byte count, and hash basis.
 
