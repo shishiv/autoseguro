@@ -56,6 +56,15 @@ Enquanto a cotação está pendente:
 - correção de dado cancela o cliente antigo, marca o job como `failed` por supersessão e cria outro `quote_request_id`;
 - pedido de pessoa cancela o cliente, persiste o handoff e prevalece sobre qualquer resposta tardia.
 
+## Experiência do Cliente (CX) e Handoff
+
+Inspirado em padrões de excelência em CX conversacional (como a filosofia de atendimento resolutivo e empático da Khal.ai):
+
+- **Esclarecimento sem perda de fluxo:** Se o cliente tem dúvidas sobre franquias, vidros ou carro reserva durante a coleta (`intent: information`), o agente consulta e valida `GET /planos`, com fallback para o snapshot local, sem forçar a escolha do plano ou descartar dados já preenchidos.
+- **Transparência humanizada em recusas (422):** Quando a seguradora recusa o risco (ex.: idade superior a 75 anos ou veículo com mais de 20 anos), o motivo oficial é informado com clareza e respeito antes de encaminhar para o consultor humano, evitando frustração e jargão técnico.
+- **Condução à contratação:** Após a cotação pronta, o agente disponibiliza a opção "Contratar plano" na lista interativa e reconhece intenções afirmativas de fechamento. O pedido fica persistido como handoff de emissão (`issuance_requested`) com a referência e o contexto da cotação para continuidade do atendimento.
+- **Linguagem acolhedora:** O diálogo confirma os dados informados de forma natural, eliminando repetições robóticas e blindando o cliente contra termos internos (`api`, `http`, `retry`, `processamento`).
+
 ## Política de falha
 
 | Situação em `POST /quote` | Ação |
@@ -302,7 +311,11 @@ A suíte determinística cobre:
 - allowlist e mídia não suportada;
 - falha outbound persistida sem corpo ou token;
 - pending imediato, cotação tardia e handoff tardio;
-- replay da outbox após reinício.
+- replay da outbox após reinício;
+- informação sobre planos sem seleção prematura durante a coleta;
+- motivo transparente e acolhedor na recusa 422 da seguradora;
+- intenção de fechamento e contratação com handoff comercial qualificado;
+- tolerância a ano de veículo em linguagem natural no intake.
 
 ## Arquitetura
 
@@ -353,7 +366,7 @@ O dataset sintético oficial serviu apenas para conferir formas de expressão, f
 ## Trade-offs
 
 - O processo mantém um registro de jobs por conversa e usa arquivos locais. Isso basta para uma réplica piloto. Múltiplas réplicas exigiriam banco, lock distribuído e outbox transacional.
-- Os três IDs de plano do contrato são validados localmente. Uma mudança no catálogo exigirá atualizar a lista ou consultar `GET /planos`.
+- Os três IDs de plano do contrato são validados localmente. As respostas informativas usam `GET /planos` validado e recorrem ao snapshot local quando o serviço não responde; uma mudança contratual ainda exige atualizar esse fallback.
 - Respostas com preço, recusa e handoff são determinísticas. O LLM não pode alterar valor nem decisão.
 - Erro de rede genérico não recebe retry, pois a política permite apenas timeout, `500`, `502` e `503`.
 - O histórico real de ferramentas de IA será incluído pelo responsável pela submissão em `ai-logs/`; este repositório não inventa esse material.

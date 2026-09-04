@@ -129,7 +129,7 @@ function textMessage(value: Record<string, unknown>): string {
 }
 
 const actionIds = new Set<ActionId>([
-  "quote_start", "plans_view", "human_help", "quote_new", "service_end",
+  "quote_start", "plans_view", "human_help", "quote_hire", "quote_new", "service_end",
   "csat_great", "csat_regular", "csat_bad", "plan_essencial", "plan_completo", "plan_premium",
   "date_today", "date_tomorrow", "date_other",
 ]);
@@ -288,7 +288,7 @@ export class MetaGraphClient {
         action: {
           button: interaction.button_label ?? "Opções",
           sections: [{
-            title: "Planos",
+            title: interaction.section_title ?? "Opções",
             rows: interaction.actions.map((action) => {
               const [title, description] = action.title.split(" — ");
               return { id: action.id, title, description };
