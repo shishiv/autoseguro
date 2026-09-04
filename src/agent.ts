@@ -55,6 +55,13 @@ const fieldQuestions: Record<RequiredFieldName, string> = {
   cep: "Qual é o CEP onde o veículo dorme?",
   data_inicio: "Quando quer começar? Escolha Hoje, Amanhã ou envie outra data.",
 };
+const fieldConfirmations: Record<RequiredFieldName, string> = {
+  plano: "Plano anotado.",
+  idade: "Idade anotada.",
+  veiculo_ano: "Ano do veículo anotado.",
+  cep: "CEP anotado.",
+  data_inicio: "Data de início anotada.",
+};
 const planInteraction: ReplyInteraction = {
   kind: "list",
   button_label: "Ver planos",
@@ -96,11 +103,17 @@ const planActions = {
 const csatRatings = { csat_great: "great", csat_regular: "regular", csat_bad: "bad" } as const;
 const dateActions = new Set<string>(["date_today", "date_tomorrow", "date_other"]);
 const greetingPattern = /^(?:oi|olá|ola|bom dia|boa tarde|boa noite)[!,.\s]*$/iu;
-const closingPattern = /\b(?:contrat(?:ar|acao|ação)?|fech(?:ar|ado|o)?|aceit(?:o|ar)?|quero (?:fechar|contratar|o plano|esse plano))\b/iu;
+const closingPattern = /^(?:sim[\s,!.]+)?(?:eu\s+)?(?:(?:quero|vou|desejo|decidi)\s+(?:contratar|fechar|aceitar)\b|gostaria\s+de\s+(?:contratar|fechar|aceitar)\b|aceito\b|fechado\b)/u;
+const blockedClosingPattern = /\b(?:nao|nem|nunca|jamais)\b|\b(?:se|caso)\s+(?:eu\s+)?(?:contratar|fechar|aceitar)\b/u;
 const endPattern = /^(?:encerrar|finalizar|encerrar atendimento|fim)[!,.\s]*$/iu;
 
 function normalizeCommand(value: string): string {
   return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
+}
+
+function isClosingIntent(value: string): boolean {
+  const normalized = normalizeCommand(value);
+  return !blockedClosingPattern.test(normalized) && closingPattern.test(normalized);
 }
 
 function isScalarInput(field: RequiredFieldName, text: string): boolean {
@@ -453,7 +466,7 @@ export class AutoSeguroAgent {
       if (endPattern.test(input.text)) {
         return this.endService(state, input.message_id);
       }
-      if (closingPattern.test(input.text)) {
+      if (isClosingIntent(input.text)) {
         return this.closeDeal(state, input.message_id);
       }
     }
@@ -491,9 +504,12 @@ export class AutoSeguroAgent {
     }
     const validated = validateField(field, text, this.timestamp().slice(0, 10));
     state.fields = mergeFields(state.fields, validated.values, messageId, "deterministic");
+    const confirmation = state.fields[field]?.origin.message_id === messageId
+      ? fieldConfirmations[field]
+      : undefined;
     const missing = missingFields(state.fields);
     return validated.errors.length > 0 || missing.length > 0
-      ? this.awaitData(state, messageId, missing, validated.errors)
+      ? this.awaitData(state, messageId, missing, validated.errors, undefined, confirmation)
       : this.startQuote(state, messageId, false);
   }
 
@@ -599,6 +615,7 @@ export class AutoSeguroAgent {
     missing: RequiredFieldName[],
     errors: string[],
     guidance?: string,
+    confirmation?: string,
   ): Promise<AgentReply> {
     state.stage = "collecting";
     const field = missing[0];
@@ -607,9 +624,7 @@ export class AutoSeguroAgent {
       ? `${errors[0]}.`
       : guidance
         ? "Para continuarmos:"
-        : Object.keys(state.fields).length > 0
-          ? "Perfeito, anotei."
-          : "Vamos montar a sua cotação.";
+        : confirmation ?? "Vamos montar a sua cotação.";
     const question = field ? fieldQuestions[field] : "Envie o dado corrigido, por favor.";
     return this.finish(state, messageId, {
       text: `${prefix}${issue}\n\n${question}`,
@@ -955,17 +970,23 @@ export class AutoSeguroAgent {
   }
 
   private async closeDeal(state: ConversationState, messageId: string): Promise<AgentReply> {
-    if (state.stage !== "resolved") {
-      return this.finish(state, messageId, terminalReply(state), "message");
+    if (state.stage !== "resolved" || state.quote === null || state.active_quote_request_id === null) {
+      return this.finish(state, messageId, {
+        text: state.stage === "quoting"
+          ? "Sua cotação está em andamento. Quando estiver pronta, você poderá solicitar a contratação."
+          : "A contratação fica disponível depois que sua cotação estiver pronta.",
+        outcome: stateOutcome(state),
+        quote_request_id: state.active_quote_request_id,
+      }, "message");
     }
+    const requestId = state.active_quote_request_id;
     state.stage = "handoff";
     state.awaiting_csat = false;
-    state.handoff_reason = "closing_requested";
-    const ref = state.active_quote_request_id ? reference(state.active_quote_request_id) : reference(this.createId());
+    state.handoff_reason = "issuance_requested";
     return this.finish(state, messageId, {
-      text: `Excelente escolha! Já separei sua cotação para emissão da apólice. Uma pessoa do nosso time vai concluir a contratação com você agora mesmo. Referência: ${ref}`,
+      text: `Sua cotação foi separada para emissão. Uma pessoa do nosso time vai orientar você com os próximos passos. Referência: ${reference(requestId)}`,
       outcome: "handoff",
-      quote_request_id: state.active_quote_request_id,
+      quote_request_id: requestId,
     }, "handoff");
   }
 

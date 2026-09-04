@@ -176,6 +176,7 @@ export type QuoteResult =
   | { kind: "cancelled"; attempts: QuoteAttempt[] };
 
 export interface QuoteClientPort {
+  fetchPlans(signal?: AbortSignal): Promise<Record<string, unknown> | null>;
   request(
     payload: QuotePayload,
     quoteRequestId: string,

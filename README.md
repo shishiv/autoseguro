@@ -62,7 +62,7 @@ Inspirado em padrões de excelência em CX conversacional (como a filosofia de a
 
 - **Esclarecimento sem perda de fluxo:** Se o cliente tem dúvidas sobre franquias, vidros ou carro reserva durante a coleta (`intent: information`), o agente apresenta as coberturas oficiais do catálogo sem forçar a escolha do plano ou descartar dados já preenchidos.
 - **Transparência humanizada em recusas (422):** Quando a seguradora recusa o risco (ex.: idade superior a 75 anos ou veículo com mais de 20 anos), o motivo oficial é informado com clareza e respeito antes de encaminhar para o consultor humano, evitando frustração e jargão técnico.
-- **Condução à contratação:** Após a cotação pronta, o agente disponibiliza o botão "Contratar plano" e reconhece intenções de fechamento ("quero contratar", "fechar apólice"), realizando o handoff qualificado (`closing_requested`) com a referência da cotação já anexada para o time comercial.
+- **Condução à contratação:** Após a cotação pronta, o agente disponibiliza o botão "Contratar plano" e reconhece intenções afirmativas de fechamento. O pedido fica persistido como handoff de emissão (`issuance_requested`) com a referência e o contexto da cotação para continuidade do atendimento.
 - **Linguagem acolhedora:** O diálogo confirma os dados informados de forma natural, eliminando repetições robóticas e blindando o cliente contra termos internos (`api`, `http`, `retry`, `processamento`).
 
 ## Política de falha
