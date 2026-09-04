@@ -71,6 +71,10 @@ class StubLlm implements LanguageModel {
 class DeferredQuoteClient implements QuoteClientPort {
   readonly calls: DeferredCall[] = [];
 
+  fetchPlans(): Promise<Record<string, unknown> | null> {
+    return Promise.resolve(null);
+  }
+
   request(
     payload: QuotePayload,
     requestId: string,
@@ -613,7 +617,7 @@ test("conversa retomada carrega campos ainda incompletos", async (context) => {
     new AuditLog(harness.auditPath),
     new StubLlm([understanding({ veiculo_ano: 2022, cep: "01310-100", data_inicio: "2026-09-01" })]),
     new QuoteClient({ baseUrl: harness.baseUrl, timeoutMs: 100, baseBackoffMs: 1, jitterMs: 0 }),
-    { createId: () => "quote-request-resumed" },
+    { createId: () => "quote-request-resumed", now: () => new Date("2026-08-28T12:00:00.000Z") },
   );
   const pending = await resumed.handle(message("Carro 2022, CEP 01310-100, início 2026-09-01", "msg-2"));
   const [terminal] = await collectTerminal(resumed);
@@ -870,10 +874,16 @@ test("aceita escalares e datas sem chamar o LLM", async (context) => {
   await harness.agent.handle({ ...message("Completo", "msg-plan-scalar"), action: "plan_completo" });
   await harness.agent.handle({ ...message("Continuar", "msg-start-scalar"), action: "quote_start" });
   const age = await harness.agent.handle(message("30", "msg-age"));
+  assert.match(age.text, /Idade anotada/u);
+  assert.doesNotMatch(age.text, /\b30\b/u);
   assert.match(age.text, /Qual é o ano do veículo/u);
   const year = await harness.agent.handle(message("2020", "msg-year"));
+  assert.match(year.text, /Ano do veículo anotado/u);
+  assert.doesNotMatch(year.text, /\b2020\b/u);
   assert.match(year.text, /CEP/u);
   const cep = await harness.agent.handle(message("01310-100", "msg-cep"));
+  assert.match(cep.text, /CEP anotado/u);
+  assert.doesNotMatch(cep.text, /01310-100/u);
   assert.deepEqual(cep.interaction?.actions.map((item) => item.id), ["date_today", "date_tomorrow", "date_other"]);
   await harness.agent.handle({ ...message("Outra data", "msg-other-date"), action: "date_other" });
   const date = await harness.agent.handle(message("25/09/2026", "msg-date"));
@@ -934,3 +944,143 @@ for (const [action, name, deductible, required, excluded] of [
     assert.equal(comparison.interaction?.kind, "list");
   });
 }
+
+test("informação sobre plano durante a coleta explica benefícios e mantém a escolha em aberto", async (context) => {
+  const harness = await makeDeferredHarness(context, [
+    understanding({ plano: "premium" }, "information"),
+  ]);
+  const reply = await harness.agent.handle(message("O plano Premium tem carro reserva?", "msg-info"));
+  assert.equal(reply.outcome, "awaiting_data");
+  assert.match(reply.text, /Plano Premium/u);
+  assert.match(reply.text, /Carro reserva/u);
+  assert.match(reply.text, /Qual plano você quer conhecer\?/u);
+  const state = await harness.store.load("conversation-1");
+  assert.equal(state.fields.plano, undefined);
+});
+
+test("recusa 422 exibe o motivo da seguradora sem jargão técnico", async (context) => {
+  const harness = await makeHarness(
+    context,
+    [understanding(completeFields())],
+    () => ({ status: 422, body: { error: "cotacao_recusada", motivo: "Veículo com mais de 20 anos não aceito" } }),
+  );
+  await harness.agent.handle(message());
+  const [terminal] = await collectTerminal(harness.agent);
+  assert.equal(terminal?.outcome, "handoff");
+  assert.match(terminal?.text ?? "", /Motivo: Veículo com mais de 20 anos não aceito/u);
+  assert.match(terminal?.text ?? "", /Referência: [0-9a-f]{8}/u);
+  assert.doesNotMatch(terminal?.text ?? "", /\b(?:api|http|retry|processamento|protocolo)\b/iu);
+});
+
+test("intenção de fechar cotação via botão aciona handoff comercial", async (context) => {
+  const harness = await makeHarness(
+    context,
+    [understanding(completeFields())],
+    () => ({ status: 200, body: successfulQuote() }),
+  );
+  await harness.agent.handle(message());
+  const [quote] = await collectTerminal(harness.agent);
+  const before = await harness.store.load("conversation-1");
+  assert.equal(quote?.interaction?.kind, "list");
+  assert.equal(quote?.interaction?.button_label, "Opções");
+  assert.deepEqual(quote?.interaction?.actions.map((action) => action.id), ["quote_hire", "quote_new", "human_help", "service_end"]);
+
+  const hireAction = await harness.agent.handle({ ...message("Contratar plano", "msg-hire"), action: "quote_hire" });
+  assert.equal(hireAction.outcome, "handoff");
+  assert.match(hireAction.text, /Sua cotação foi separada para emissão/u);
+  assert.match(hireAction.text, /Referência: [0-9a-f]{8}/u);
+  assert.doesNotMatch(hireAction.text, /\b(?:api|http|retry|processamento|protocolo)\b/iu);
+  const stateAction = await harness.store.load("conversation-1");
+  assert.equal(stateAction.stage, "handoff");
+  assert.equal(stateAction.handoff_reason, "issuance_requested");
+  assert.deepEqual(stateAction.quote, before.quote);
+  assert.deepEqual(stateAction.fields, before.fields);
+  assert.deepEqual(stateAction.quote_jobs, before.quote_jobs);
+  assert.deepEqual(stateAction.outbox, before.outbox);
+  assert.equal(stateAction.quote_jobs[0]?.status, "delivered");
+  assert.equal(hireAction.quote_request_id, quote?.quote_request_id);
+  assert.equal(harness.requests.length, 1);
+});
+
+test("texto de fechamento após cotação resolvida aciona handoff comercial", async (context) => {
+  const harness = await makeHarness(
+    context,
+    [understanding(completeFields())],
+    () => ({ status: 200, body: successfulQuote() }),
+  );
+  await harness.agent.handle(message());
+  await collectTerminal(harness.agent);
+
+  const closingText = await harness.agent.handle(message("Quero fechar esse plano!", "msg-close-text"));
+  assert.equal(closingText.outcome, "handoff");
+  assert.match(closingText.text, /Sua cotação foi separada para emissão/u);
+  assert.match(closingText.text, /Referência: [0-9a-f]{8}/u);
+  assert.doesNotMatch(closingText.text, /\b(?:api|http|retry|processamento|protocolo)\b/iu);
+  const stateText = await harness.store.load("conversation-1");
+  assert.equal(stateText.stage, "handoff");
+  assert.equal(stateText.handoff_reason, "issuance_requested");
+});
+
+for (const text of [
+  "não quero contratar",
+  "não vou fechar",
+  "nem pensar em contratar",
+  "se eu contratar, como funciona?",
+  "talvez eu feche",
+] as const) {
+  test(`não trata como fechamento: ${text}`, async (context) => {
+    const harness = await makeHarness(
+      context,
+      [understanding(completeFields())],
+      () => ({ status: 200, body: successfulQuote() }),
+    );
+    await harness.agent.handle(message());
+    await collectTerminal(harness.agent);
+    const before = await harness.store.load("conversation-1");
+    const reply = await harness.agent.handle(message(text, "msg-not-closing"));
+    const after = await harness.store.load("conversation-1");
+    assert.equal(reply.outcome, "resolved");
+    assert.equal(after.stage, "resolved");
+    assert.equal(after.handoff_reason, null);
+    assert.deepEqual(after.quote, before.quote);
+    assert.deepEqual(after.quote_jobs, before.quote_jobs);
+  });
+}
+
+test("quote_hire durante collecting mantém a coleta sem handoff", async (context) => {
+  const harness = await makeDeferredHarness(context, []);
+  const reply = await harness.agent.handle({ ...message("Contratar plano", "msg-stale-hire"), action: "quote_hire" });
+  const state = await harness.store.load("conversation-1");
+  assert.equal(reply.outcome, "awaiting_data");
+  assert.equal(state.stage, "collecting");
+  assert.equal(state.handoff_reason, null);
+  assert.equal(harness.client.calls.length, 0);
+});
+
+test("quote_hire durante quoting preserva o job pendente", async (context) => {
+  const harness = await makeDeferredHarness(context, [understanding(completeFields())]);
+  await harness.agent.handle(message());
+  await waitForCalls(harness.client, 1);
+  const reply = await harness.agent.handle({ ...message("Contratar plano", "msg-stale-hire"), action: "quote_hire" });
+  const pending = await harness.store.load("conversation-1");
+  assert.equal(reply.outcome, "awaiting_data");
+  assert.equal(pending.stage, "quoting");
+  assert.equal(pending.handoff_reason, null);
+  assert.equal(pending.quote_jobs[0]?.status, "pending");
+  assert.equal(harness.client.calls.length, 1);
+  await harness.client.succeed(0, 209.9);
+  await collectTerminal(harness.agent);
+  assert.equal((await harness.store.load("conversation-1")).quote_jobs[0]?.status, "delivered");
+});
+
+test("rejeita ano misturado com linguagem natural", async (context) => {
+  const harness = await makeHarness(
+    context,
+    [understanding(completeFields({ veiculo_ano: "Gol 2018" }))],
+    () => ({ status: 200, body: successfulQuote() }),
+  );
+  const reply = await harness.agent.handle(message());
+  assert.match(reply.text, /ano do veículo inválido/u);
+  assert.doesNotMatch(reply.text, /anotado/u);
+  assert.equal(harness.requests.length, 0);
+});
