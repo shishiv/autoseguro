@@ -18,6 +18,7 @@ import {
 } from "../src/meta.ts";
 import { AuditLog, FileConversationStore } from "../src/persistence.ts";
 import type {
+  IncomingMessage,
   LanguageModel,
   LanguageUnderstanding,
   QuoteAttempt,
@@ -68,6 +69,10 @@ interface DeferredRequest {
 
 class DeferredQuoteClient implements QuoteClientPort {
   readonly requests: DeferredRequest[] = [];
+
+  fetchPlans(): Promise<Record<string, unknown> | null> {
+    return Promise.resolve(null);
+  }
 
   request(
     _payload: QuotePayload,
@@ -263,6 +268,30 @@ function webhookPayload(
   }));
 }
 
+function interactiveButtonPayload(id: string, actionId: string): Buffer {
+  return Buffer.from(JSON.stringify({
+    object: "whatsapp_business_account",
+    entry: [{
+      id: TEST_WABA_ID,
+      changes: [{
+        field: "messages",
+        value: {
+          metadata: { phone_number_id: TEST_PHONE_NUMBER_ID },
+          messages: [{
+            from: config.allowedRecipient,
+            id,
+            type: "interactive",
+            interactive: {
+              type: "button_reply",
+              button_reply: { id: actionId, title: "Contratar plano" },
+            },
+          }],
+        },
+      }],
+    }],
+  }));
+}
+
 function signature(body: Buffer): string {
   return `sha256=${createHmac("sha256", config.appSecret).update(body).digest("hex")}`;
 }
@@ -350,6 +379,39 @@ test("rejeita payload malformado com assinatura válida", async (context) => {
   const response = await postWebhook(baseUrl, body);
   assert.equal(response.status, 400);
   assert.equal(testHarness.meta.bodies.length, 0);
+});
+
+test("aceita quote_hire interativo e mantém rejeição de ação desconhecida", async (context) => {
+  const testHarness = await harness(context, []);
+  const handled: IncomingMessage[] = [];
+  const handle = testHarness.agent.handle.bind(testHarness.agent);
+  testHarness.agent.handle = async (message) => {
+    handled.push(message);
+    return handle(message);
+  };
+  const baseUrl = await startWebhook(context, testHarness.transport);
+  const accepted = await postWebhook(baseUrl, interactiveButtonPayload("wamid-quote-hire", "quote_hire"));
+  assert.equal(accepted.status, 200);
+  assert.equal(await accepted.text(), "EVENT_RECEIVED");
+  await waitUntil(() => handled.length === 1);
+  await testHarness.transport.waitForIdle();
+  assert.equal(handled[0]?.action, "quote_hire");
+
+  const acceptedCorrelated = await postWebhook(baseUrl, interactiveButtonPayload("wamid-quote-hire-ref", "quote_hire:5bcad7bc"));
+  assert.equal(acceptedCorrelated.status, 200);
+  assert.equal(await acceptedCorrelated.text(), "EVENT_RECEIVED");
+  await waitUntil(() => handled.length === 2);
+  await testHarness.transport.waitForIdle();
+  assert.equal(handled[1]?.action, "quote_hire:5bcad7bc");
+
+  const rejectedMalformed = await postWebhook(baseUrl, interactiveButtonPayload("wamid-malformed-ref", "quote_hire:xyz_invalid"));
+  assert.equal(rejectedMalformed.status, 400);
+  assert.deepEqual(await rejectedMalformed.json(), { error: "malformed_payload" });
+
+  const rejected = await postWebhook(baseUrl, interactiveButtonPayload("wamid-unknown-action", "unknown_action"));
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(await rejected.json(), { error: "malformed_payload" });
+  assert.equal(handled.length, 2);
 });
 
 test("recusa destinatário fora da allowlist sem intake", async (context) => {
