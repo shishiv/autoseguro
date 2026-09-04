@@ -11,7 +11,7 @@ export type ConversationStage = "collecting" | "quoting" | "resolved" | "handoff
 export type Outcome = "resolved" | "awaiting_data" | "refused" | "handoff";
 export type MessageType = "text" | "audio" | "image" | "document";
 export type QuoteJobStatus = "pending" | "retrying" | "delivered" | "failed";
-export type ActionId = "quote_start" | "plans_view" | "human_help" | "quote_new" | "service_end" | "csat_great" | "csat_regular" | "csat_bad" | "plan_essencial" | "plan_completo" | "plan_premium" | "date_today" | "date_tomorrow" | "date_other";
+export type ActionId = "quote_start" | "plans_view" | "human_help" | "quote_hire" | "quote_new" | "service_end" | "csat_great" | "csat_regular" | "csat_bad" | "plan_essencial" | "plan_completo" | "plan_premium" | "date_today" | "date_tomorrow" | "date_other";
 
 export interface FieldOrigin {
   message_id: string;
@@ -176,6 +176,7 @@ export type QuoteResult =
   | { kind: "cancelled"; attempts: QuoteAttempt[] };
 
 export interface QuoteClientPort {
+  fetchPlans(signal?: AbortSignal): Promise<Record<string, unknown> | null>;
   request(
     payload: QuotePayload,
     quoteRequestId: string,

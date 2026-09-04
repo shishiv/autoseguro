@@ -55,6 +55,13 @@ const fieldQuestions: Record<RequiredFieldName, string> = {
   cep: "Qual é o CEP onde o veículo dorme?",
   data_inicio: "Quando quer começar? Escolha Hoje, Amanhã ou envie outra data.",
 };
+const fieldConfirmations: Record<RequiredFieldName, string> = {
+  plano: "Plano anotado.",
+  idade: "Idade anotada.",
+  veiculo_ano: "Ano do veículo anotado.",
+  cep: "CEP anotado.",
+  data_inicio: "Data de início anotada.",
+};
 const planInteraction: ReplyInteraction = {
   kind: "list",
   button_label: "Ver planos",
@@ -75,9 +82,9 @@ const dateInteraction: ReplyInteraction = {
 const quoteActions: ReplyInteraction = {
   kind: "buttons",
   actions: [
+    { id: "quote_hire", title: "Contratar plano" },
     { id: "quote_new", title: "Nova cotação" },
     { id: "human_help", title: "Falar com uma pessoa" },
-    { id: "service_end", title: "Encerrar atendimento" },
   ],
 };
 const csatActions: ReplyInteraction = {
@@ -94,10 +101,19 @@ const planActions = {
   plan_premium: "premium",
 } as const;
 const csatRatings = { csat_great: "great", csat_regular: "regular", csat_bad: "bad" } as const;
+const dateActions = new Set<string>(["date_today", "date_tomorrow", "date_other"]);
 const greetingPattern = /^(?:oi|olá|ola|bom dia|boa tarde|boa noite)[!,.\s]*$/iu;
+const closingPattern = /^(?:sim[\s,!.]+)?(?:eu\s+)?(?:(?:quero|vou|desejo|decidi)\s+(?:contratar|fechar|aceitar)\b|gostaria\s+de\s+(?:contratar|fechar|aceitar)\b|aceito\b|fechado\b)/u;
+const blockedClosingPattern = /\b(?:nao|nem|nunca|jamais)\b|\b(?:se|caso)\s+(?:eu\s+)?(?:contratar|fechar|aceitar)\b/u;
+const endPattern = /^(?:encerrar|finalizar|encerrar atendimento|fim)[!,.\s]*$/iu;
 
 function normalizeCommand(value: string): string {
   return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
+}
+
+function isClosingIntent(value: string): boolean {
+  const normalized = normalizeCommand(value);
+  return !blockedClosingPattern.test(normalized) && closingPattern.test(normalized);
 }
 
 function isScalarInput(field: RequiredFieldName, text: string): boolean {
@@ -290,9 +306,31 @@ function pendingStatusReply(state: ConversationState, information: boolean): Age
   };
 }
 
-function refusalReply(requestId: string): AgentReply {
+function formatPlanCatalogSummary(): string {
+  return [
+    "Planos disponíveis:",
+    "• Essencial — colisão, roubo e furto. Franquia: R$ 4.500,00.",
+    "• Completo — adiciona terceiros e vidros. Franquia: R$ 3.000,00.",
+    "• Premium — adiciona carro reserva e assistência 24h. Franquia: R$ 1.500,00.",
+    "Roubo e furto passam a valer após 30 dias contados do início da cobertura.",
+  ].join("\n");
+}
+
+function explainPlanDetails(plan: PlanId): string {
+  const details = planCatalog[plan];
+  return [
+    `Plano ${details.nome}`,
+    `Coberturas: ${details.coberturas.join(", ")}.`,
+    `Franquia: ${formatMoney(details.franquia, "BRL")}.`,
+    "Roubo e furto passam a valer após 30 dias contados do início da cobertura.",
+  ].join("\n");
+}
+
+function refusalReply(requestId: string, reason?: string | null): AgentReply {
+  const cleanReason = reason?.trim().replace(/\.+$/u, "");
+  const detail = cleanReason && !/api/iu.test(cleanReason) ? ` Motivo: ${cleanReason}.` : "";
   return {
-    text: `Não foi possível seguir com esta cotação. Uma pessoa do time vai orientar você. Referência: ${reference(requestId)}`,
+    text: `Não foi possível seguir com esta cotação.${detail} Uma pessoa do time vai orientar você. Referência: ${reference(requestId)}`,
     outcome: "handoff",
     quote_request_id: requestId,
   };
@@ -424,6 +462,14 @@ export class AutoSeguroAgent {
     if (normalizeCommand(input.text) === "nova cotacao") {
       return this.newQuote(state, input.message_id);
     }
+    if (state.stage === "resolved") {
+      if (endPattern.test(input.text)) {
+        return this.endService(state, input.message_id);
+      }
+      if (isClosingIntent(input.text)) {
+        return this.closeDeal(state, input.message_id);
+      }
+    }
     if (greetingPattern.test(input.text) && state.stage === "collecting") {
       return this.welcome(state, input.message_id);
     }
@@ -458,9 +504,12 @@ export class AutoSeguroAgent {
     }
     const validated = validateField(field, text, this.timestamp().slice(0, 10));
     state.fields = mergeFields(state.fields, validated.values, messageId, "deterministic");
+    const confirmation = state.fields[field]?.origin.message_id === messageId
+      ? fieldConfirmations[field]
+      : undefined;
     const missing = missingFields(state.fields);
     return validated.errors.length > 0 || missing.length > 0
-      ? this.awaitData(state, messageId, missing, validated.errors)
+      ? this.awaitData(state, messageId, missing, validated.errors, undefined, confirmation)
       : this.startQuote(state, messageId, false);
   }
 
@@ -477,6 +526,18 @@ export class AutoSeguroAgent {
     }
     if (understanding.ambiguous) {
       return this.handleAmbiguity(state, messageId, false);
+    }
+    if (understanding.intent === "information") {
+      const candidates = { ...understanding.fields };
+      const queriedPlan = candidates.plano;
+      delete candidates.plano;
+      const validated = validateCandidates(candidates, this.timestamp().slice(0, 10));
+      state.fields = mergeFields(state.fields, validated.values, messageId, this.fieldSource);
+      const explanation = typeof queriedPlan === "string" && queriedPlan in planCatalog
+        ? explainPlanDetails(queriedPlan as PlanId)
+        : formatPlanCatalogSummary();
+      const missing = missingFields(state.fields);
+      return this.awaitData(state, messageId, missing, validated.errors, explanation);
     }
     state.ambiguity_count = 0;
     const validated = validateCandidates(understanding.fields, this.timestamp().slice(0, 10));
@@ -553,13 +614,20 @@ export class AutoSeguroAgent {
     messageId: string,
     missing: RequiredFieldName[],
     errors: string[],
+    guidance?: string,
+    confirmation?: string,
   ): Promise<AgentReply> {
     state.stage = "collecting";
     const field = missing[0];
-    const issue = errors.length > 0 ? `${errors[0]}.` : "Vamos seguir.";
+    const prefix = guidance ? `${guidance}\n\n` : "";
+    const issue = errors.length > 0
+      ? `${errors[0]}.`
+      : guidance
+        ? "Para continuarmos:"
+        : confirmation ?? "Vamos montar a sua cotação.";
     const question = field ? fieldQuestions[field] : "Envie o dado corrigido, por favor.";
     return this.finish(state, messageId, {
-      text: `${issue}\n\n${question}`,
+      text: `${prefix}${issue}\n\n${question}`,
       outcome: "awaiting_data",
       quote_request_id: null,
       ...(field === "plano" ? { interaction: planInteraction } : field === "data_inicio" ? { interaction: dateInteraction } : {}),
@@ -706,7 +774,7 @@ export class AutoSeguroAgent {
         return;
       }
       if (result.kind === "refused") {
-        await this.completeFailure(state, job, "quote_refused", refusalReply(requestId));
+        await this.completeFailure(state, job, "quote_refused", refusalReply(requestId, result.reason));
         return;
       }
       if (result.kind === "cancelled") {
@@ -795,15 +863,17 @@ export class AutoSeguroAgent {
     if (action in csatRatings) {
       return this.recordCsat(state, messageId, csatRatings[action as keyof typeof csatRatings]);
     }
-    if (action === "date_today" || action === "date_tomorrow" || action === "date_other") {
-      return this.chooseDate(state, messageId, action);
+    if (dateActions.has(action)) {
+      return this.chooseDate(state, messageId, action as "date_today" | "date_tomorrow" | "date_other");
     }
     switch (action) {
+      case "quote_hire":
+        return this.closeDeal(state, messageId);
       case "human_help":
         return this.handoff(state, messageId, "human_requested");
       case "plans_view":
         return this.finish(state, messageId, {
-          text: "Escolha um plano para comparar ou seguir.",
+          text: formatPlanCatalogSummary(),
           outcome: stateOutcome(state),
           quote_request_id: state.active_quote_request_id,
           interaction: planInteraction,
@@ -825,15 +895,8 @@ export class AutoSeguroAgent {
       return this.finish(state, messageId, terminalReply(state), "message");
     }
     state.fields = mergeFields(state.fields, { plano: plan }, messageId, "deterministic");
-    const details = planCatalog[plan];
     return this.finish(state, messageId, {
-      text: [
-        `Plano ${details.nome}`,
-        `Coberturas: ${details.coberturas.join(", ")}.`,
-        `Franquia: ${formatMoney(details.franquia, "BRL")}.`,
-        "Roubo e furto passam a valer após 30 dias contados do início da cobertura.",
-        "Quer seguir com este plano?",
-      ].join("\n"),
+      text: `${explainPlanDetails(plan)}\nQuer seguir com este plano?`,
       outcome: "awaiting_data",
       quote_request_id: null,
       interaction: {
@@ -904,6 +967,27 @@ export class AutoSeguroAgent {
       quote_request_id: state.active_quote_request_id,
       interaction: csatActions,
     }, "message");
+  }
+
+  private async closeDeal(state: ConversationState, messageId: string): Promise<AgentReply> {
+    if (state.stage !== "resolved" || state.quote === null || state.active_quote_request_id === null) {
+      return this.finish(state, messageId, {
+        text: state.stage === "quoting"
+          ? "Sua cotação está em andamento. Quando estiver pronta, você poderá solicitar a contratação."
+          : "A contratação fica disponível depois que sua cotação estiver pronta.",
+        outcome: stateOutcome(state),
+        quote_request_id: state.active_quote_request_id,
+      }, "message");
+    }
+    const requestId = state.active_quote_request_id;
+    state.stage = "handoff";
+    state.awaiting_csat = false;
+    state.handoff_reason = "issuance_requested";
+    return this.finish(state, messageId, {
+      text: `Sua cotação foi separada para emissão. Uma pessoa do nosso time vai orientar você com os próximos passos. Referência: ${reference(requestId)}`,
+      outcome: "handoff",
+      quote_request_id: requestId,
+    }, "handoff");
   }
 
   private async recordCsat(

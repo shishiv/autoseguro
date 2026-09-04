@@ -1,4 +1,5 @@
 import { performance } from "node:perf_hooks";
+import { redactSensitiveText } from "./privacy.ts";
 import type {
   ProRataPayment,
   QuoteAttempt,
@@ -26,6 +27,11 @@ interface AttemptResponse {
 }
 
 const retryableStatuses = new Set([500, 502, 503]);
+const refusalFallback = "Cotação recusada pela seguradora";
+const technicalReasonPattern = /(?<!\p{L})(?:apis?|https?|retry|retries|retrying|attempts?|tentativas?|processamentos?|protocolos?|background)(?!\p{L})|segundo\s+plano/iu;
+const cepPattern = /\b\d{5}-?\d{3}\b/u;
+const internalIdPattern = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/iu;
+const moneyPattern = /(?:R\$\s*\d|\bBRL\b|\breais?\b)/iu;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -114,12 +120,23 @@ async function errorReason(response: Response): Promise<string> {
   try {
     const body: unknown = await response.json();
     if (isRecord(body) && typeof body.motivo === "string") {
-      return body.motivo;
+      const reason = body.motivo.replace(/\s+/gu, " ").trim();
+      if (
+        reason
+        && !/[\p{Cc}\p{Cf}]/u.test(reason)
+        && !technicalReasonPattern.test(reason)
+        && !cepPattern.test(reason)
+        && !internalIdPattern.test(reason)
+        && !moneyPattern.test(reason)
+        && redactSensitiveText(reason) === reason
+      ) {
+        return [...reason].slice(0, 100).join("").trim();
+      }
     }
   } catch {
-    return "Cotação recusada pela API";
+    return refusalFallback;
   }
-  return "Cotação recusada pela API";
+  return refusalFallback;
 }
 
 function isTimeout(error: unknown): boolean {
@@ -186,6 +203,21 @@ export class QuoteClient implements QuoteClientPort {
       await this.backoff(attempt);
     }
     return { kind: "handoff", reason: "quote_attempts_exhausted", attempts };
+  }
+
+  async fetchPlans(signal?: AbortSignal): Promise<Record<string, unknown> | null> {
+    try {
+      const timeoutSignal = AbortSignal.timeout(3_000);
+      const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+      const response = await this.fetcher(`${this.baseUrl}/planos`, { method: "GET", signal: requestSignal });
+      if (!response.ok) {
+        return null;
+      }
+      const body: unknown = await response.json();
+      return isRecord(body) ? body : null;
+    } catch {
+      return null;
+    }
   }
 
   private async call(
