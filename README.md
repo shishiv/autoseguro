@@ -56,6 +56,15 @@ Enquanto a cotação está pendente:
 - correção de dado cancela o cliente antigo, marca o job como `failed` por supersessão e cria outro `quote_request_id`;
 - pedido de pessoa cancela o cliente, persiste o handoff e prevalece sobre qualquer resposta tardia.
 
+## Experiência do Cliente (CX) e Handoff
+
+Inspirado em padrões de excelência em CX conversacional (como a filosofia de atendimento resolutivo e empático da Khal.ai):
+
+- **Esclarecimento sem perda de fluxo:** Se o cliente tem dúvidas sobre franquias, vidros ou carro reserva durante a coleta (`intent: information`), o agente apresenta as coberturas oficiais do catálogo sem forçar a escolha do plano ou descartar dados já preenchidos.
+- **Transparência humanizada em recusas (422):** Quando a seguradora recusa o risco (ex.: idade superior a 75 anos ou veículo com mais de 20 anos), o motivo oficial é informado com clareza e respeito antes de encaminhar para o consultor humano, evitando frustração e jargão técnico.
+- **Condução à contratação:** Após a cotação pronta, o agente disponibiliza o botão "Contratar plano" e reconhece intenções afirmativas de fechamento. O pedido fica persistido como handoff de emissão (`issuance_requested`) com a referência e o contexto da cotação para continuidade do atendimento.
+- **Linguagem acolhedora:** O diálogo confirma os dados informados de forma natural, eliminando repetições robóticas e blindando o cliente contra termos internos (`api`, `http`, `retry`, `processamento`).
+
 ## Política de falha
 
 | Situação em `POST /quote` | Ação |
@@ -302,7 +311,11 @@ A suíte determinística cobre:
 - allowlist e mídia não suportada;
 - falha outbound persistida sem corpo ou token;
 - pending imediato, cotação tardia e handoff tardio;
-- replay da outbox após reinício.
+- replay da outbox após reinício;
+- informação sobre planos sem seleção prematura durante a coleta;
+- motivo transparente e acolhedor na recusa 422 da seguradora;
+- intenção de fechamento e contratação com handoff comercial qualificado;
+- tolerância a ano de veículo em linguagem natural no intake.
 
 ## Arquitetura
 
