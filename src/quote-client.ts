@@ -117,9 +117,9 @@ async function errorReason(response: Response): Promise<string> {
       return body.motivo;
     }
   } catch {
-    return "Cotação recusada pela API";
+    return "Cotação recusada pela seguradora";
   }
-  return "Cotação recusada pela API";
+  return "Cotação recusada pela seguradora";
 }
 
 function isTimeout(error: unknown): boolean {

@@ -36,6 +36,24 @@ function normalizeInteger(value: unknown, minimum: number, maximum: number): num
   return Number.isInteger(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null;
 }
 
+function normalizeYear(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isInteger(value) && value >= 1950 && value <= 2100 ? value : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^\d{4}$/u.test(trimmed)) {
+      const parsed = Number(trimmed);
+      return parsed >= 1950 && parsed <= 2100 ? parsed : null;
+    }
+    const match = /\b(19[5-9]\d|20\d{2}|2100)\b/u.exec(trimmed);
+    if (match && match[1]) {
+      return Number(match[1]);
+    }
+  }
+  return null;
+}
+
 function normalizeCep(value: unknown): string | null {
   if (typeof value !== "string" && typeof value !== "number") {
     return null;
@@ -106,7 +124,7 @@ export function validateCandidates(
   assignIfPresent(candidates.idade, normalizeInteger(candidates.idade, 0, 200), "idade", "idade", values, errors);
   assignIfPresent(
     candidates.veiculo_ano,
-    normalizeInteger(candidates.veiculo_ano, 1950, 2100),
+    normalizeYear(candidates.veiculo_ano),
     "veiculo_ano",
     "ano do veículo",
     values,
