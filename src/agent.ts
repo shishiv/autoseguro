@@ -1174,6 +1174,14 @@ export class AutoSeguroAgent {
     }
     const requestId = state.active_quote_request_id;
     const currentRef = reference(requestId);
+    if (action === "quote_hire") {
+      return this.finish(state, messageId, {
+        text: `Esta opção está desatualizada. Utilize as opções da sua cotação ativa (Referência: ${currentRef}).`,
+        outcome: stateOutcome(state),
+        quote_request_id: requestId,
+        interaction: quoteActions(requestId),
+      }, "message");
+    }
     if (action && action.startsWith("quote_hire:")) {
       const targetRef = action.slice("quote_hire:".length);
       if (targetRef && targetRef !== currentRef) {

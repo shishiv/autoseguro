@@ -1233,21 +1233,57 @@ test("quote_hire com referência divergente rejeita e preserva cotação ativa e
   assert.equal(harness.requests.length, 1);
 });
 
-test("quote_hire sem sufixo de correlação ainda aciona handoff comercial para compatibilidade", async (context) => {
+test("cenário cotação A -> cotação B resolvida -> clique legado quote_hire rejeita sem handoff", async (context) => {
   const harness = await makeHarness(
     context,
-    [understanding(completeFields())],
+    [
+      understanding(completeFields({ plano: "essencial" })),
+      understanding(completeFields({ plano: "completo" })),
+    ],
     () => ({ status: 200, body: successfulQuote() }),
   );
-  await harness.agent.handle(message());
-  await collectTerminal(harness.agent);
+  await harness.agent.handle(message(undefined, "msg-1"));
+  const [quoteA] = await collectTerminal(harness.agent);
+  assert.ok(quoteA);
+  const refA = reference(quoteA.quote_request_id ?? "");
 
-  const hireAction = await harness.agent.handle({ ...message("Contratar plano", "msg-hire-bare"), action: "quote_hire" });
-  assert.equal(hireAction.outcome, "handoff");
-  assert.match(hireAction.text, /Sua cotação foi separada para emissão/u);
-  const stateAction = await harness.store.load("conversation-1");
-  assert.equal(stateAction.stage, "handoff");
-  assert.equal(stateAction.handoff_reason, "issuance_requested");
+  await harness.agent.handle({ ...message("Nova cotação", "msg-new"), action: "quote_new" });
+  await harness.agent.handle(message(undefined, "msg-2"));
+  const [quoteB] = await collectTerminal(harness.agent);
+  assert.ok(quoteB);
+  const activeRefB = reference(quoteB.quote_request_id ?? "");
+
+  const legacyReply = await harness.agent.handle({ ...message("Contratar plano", "msg-legacy-hire"), action: "quote_hire" });
+  assert.equal(legacyReply.outcome, "resolved");
+  assert.match(legacyReply.text, /Esta opção está desatualizada/u);
+  assert.match(legacyReply.text, new RegExp(`Referência: ${activeRefB}`, "u"));
+  assert.equal(legacyReply.interaction?.actions[0]?.id, `quote_hire:${activeRefB}`);
+
+  const staleReplyA = await harness.agent.handle({
+    ...message("Contratar plano", "msg-stale-a"),
+    action: `quote_hire:${refA}` as ActionId,
+  });
+  assert.equal(staleReplyA.outcome, "resolved");
+  assert.match(staleReplyA.text, /Esta opção pertence a uma cotação anterior/u);
+  assert.match(staleReplyA.text, new RegExp(`Sua cotação ativa é a Referência: ${activeRefB}`, "u"));
+  assert.equal(staleReplyA.interaction?.actions[0]?.id, `quote_hire:${activeRefB}`);
+
+  const state = await harness.store.load("conversation-1");
+  assert.equal(state.stage, "resolved");
+  assert.equal(state.handoff_reason, null);
+  assert.equal(state.active_quote_request_id, quoteB.quote_request_id);
+  assert.equal(harness.requests.length, 2);
+
+  const validReplyB = await harness.agent.handle({
+    ...message("Contratar plano", "msg-hire-b"),
+    action: `quote_hire:${activeRefB}` as ActionId,
+  });
+  assert.equal(validReplyB.outcome, "handoff");
+  assert.match(validReplyB.text, /Sua cotação foi separada para emissão/u);
+  assert.match(validReplyB.text, new RegExp(`Referência: ${activeRefB}`, "u"));
+  const finalState = await harness.store.load("conversation-1");
+  assert.equal(finalState.stage, "handoff");
+  assert.equal(finalState.handoff_reason, "issuance_requested");
 });
 
 test("plans_view retorna ações com títulos limpos de planos e renderização sem vazamento local", async (context) => {
