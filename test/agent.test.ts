@@ -981,6 +981,9 @@ test("intenção de fechar cotação via botão aciona handoff comercial", async
   await harness.agent.handle(message());
   const [quote] = await collectTerminal(harness.agent);
   const before = await harness.store.load("conversation-1");
+  assert.equal(quote?.interaction?.kind, "list");
+  assert.equal(quote?.interaction?.button_label, "Opções");
+  assert.deepEqual(quote?.interaction?.actions.map((action) => action.id), ["quote_hire", "quote_new", "human_help", "service_end"]);
 
   const hireAction = await harness.agent.handle({ ...message("Contratar plano", "msg-hire"), action: "quote_hire" });
   assert.equal(hireAction.outcome, "handoff");
@@ -993,7 +996,7 @@ test("intenção de fechar cotação via botão aciona handoff comercial", async
   assert.deepEqual(stateAction.quote, before.quote);
   assert.deepEqual(stateAction.fields, before.fields);
   assert.deepEqual(stateAction.quote_jobs, before.quote_jobs);
-  assert.equal(stateAction.outbox.length, before.outbox.length);
+  assert.deepEqual(stateAction.outbox, before.outbox);
   assert.equal(stateAction.quote_jobs[0]?.status, "delivered");
   assert.equal(hireAction.quote_request_id, quote?.quote_request_id);
   assert.equal(harness.requests.length, 1);

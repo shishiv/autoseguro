@@ -98,6 +98,7 @@ export interface ReplyInteraction {
   kind: "buttons" | "list";
   actions: ButtonAction[];
   button_label?: string;
+  section_title?: string;
 }
 
 export interface AgentReply {
