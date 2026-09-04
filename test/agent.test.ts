@@ -613,7 +613,7 @@ test("conversa retomada carrega campos ainda incompletos", async (context) => {
     new AuditLog(harness.auditPath),
     new StubLlm([understanding({ veiculo_ano: 2022, cep: "01310-100", data_inicio: "2026-09-01" })]),
     new QuoteClient({ baseUrl: harness.baseUrl, timeoutMs: 100, baseBackoffMs: 1, jitterMs: 0 }),
-    { createId: () => "quote-request-resumed" },
+    { createId: () => "quote-request-resumed", now: () => new Date("2026-08-28T12:00:00.000Z") },
   );
   const pending = await resumed.handle(message("Carro 2022, CEP 01310-100, início 2026-09-01", "msg-2"));
   const [terminal] = await collectTerminal(resumed);
