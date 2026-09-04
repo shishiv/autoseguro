@@ -80,11 +80,14 @@ const dateInteraction: ReplyInteraction = {
   ],
 };
 const quoteActions: ReplyInteraction = {
-  kind: "buttons",
+  kind: "list",
+  button_label: "Opções",
+  section_title: "Próximos passos",
   actions: [
     { id: "quote_hire", title: "Contratar plano" },
     { id: "quote_new", title: "Nova cotação" },
     { id: "human_help", title: "Falar com uma pessoa" },
+    { id: "service_end", title: "Encerrar atendimento" },
   ],
 };
 const csatActions: ReplyInteraction = {
