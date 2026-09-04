@@ -128,11 +128,15 @@ function textMessage(value: Record<string, unknown>): string {
   return text.body;
 }
 
-const actionIds = new Set<ActionId>([
-  "quote_start", "plans_view", "human_help", "quote_new", "service_end",
+const actionIds = new Set<string>([
+  "quote_start", "plans_view", "human_help", "quote_hire", "quote_new", "service_end",
   "csat_great", "csat_regular", "csat_bad", "plan_essencial", "plan_completo", "plan_premium",
   "date_today", "date_tomorrow", "date_other",
 ]);
+
+function isKnownActionId(id: string): id is ActionId {
+  return actionIds.has(id) || (id.startsWith("quote_hire:") && /^[0-9a-f]{8}$/u.test(id.slice("quote_hire:".length)));
+}
 
 function interactiveAction(value: Record<string, unknown>): { action: ActionId; text: string } | null {
   if (value.type !== "interactive" || !isRecord(value.interactive)) {
@@ -140,7 +144,7 @@ function interactiveAction(value: Record<string, unknown>): { action: ActionId; 
   }
   const interactive = value.interactive;
   const reply = interactive.type === "button_reply" ? interactive.button_reply : interactive.list_reply;
-  if (!isRecord(reply) || typeof reply.id !== "string" || typeof reply.title !== "string" || !actionIds.has(reply.id as ActionId)) {
+  if (!isRecord(reply) || typeof reply.id !== "string" || typeof reply.title !== "string" || !isKnownActionId(reply.id)) {
     throw new MetaWebhookError(400, "malformed_payload");
   }
   return { action: reply.id as ActionId, text: reply.title };
@@ -288,7 +292,7 @@ export class MetaGraphClient {
         action: {
           button: interaction.button_label ?? "Opções",
           sections: [{
-            title: "Planos",
+            title: interaction.section_title ?? "Opções",
             rows: interaction.actions.map((action) => {
               const [title, description] = action.title.split(" — ");
               return { id: action.id, title, description };
