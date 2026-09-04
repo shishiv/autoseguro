@@ -3044,9 +3044,9 @@
           "vehicle_age_band": "6-10",
           "cep_risk": "high",
           "policy_start_form": "tomorrow",
-          "interaction_format": "cli-replay",
-          "variant": "csat-regular",
-          "expected_terminal": "closed",
+          "interaction_format": "meta-rich",
+          "variant": "quote-hire",
+          "expected_terminal": "handoff",
           "expected_pro_rata": "derived-from-runtime-date",
           "expected_waiting_period_days": 30
         }

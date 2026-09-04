@@ -40,6 +40,7 @@ const featureScenarios = {
   "pending-async-delivery": "complete-input-success-01",
   "failure-handoff": "exhausted-infrastructure-handoff-01",
   "ending-csat": "close-csat-channel-fallback-parity-04",
+  "quote-hire": "close-csat-channel-fallback-parity-20",
 };
 const expectedFamilies = [
   "progressive-happy-success",
@@ -68,6 +69,7 @@ const expectedActions = [
   "date_today",
   "date_tomorrow",
   "date_other",
+  "quote_hire",
 ];
 const forbiddenCopy = /\b(?:api|http|retries?|attempts?|tentativas?|tentativa|protocolo|uuid|job|jobs|processamento)\b|segundo plano|background/iu;
 const uuidPattern = /\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/iu;
@@ -584,7 +586,7 @@ async function launchApp(run, journey, part = 1) {
   const logPath = join(run.artifactDirectory, "logs", `${journey.scenario.id}-${part}.log`);
   await mkdir(dirname(logPath), { recursive: true });
   const descriptor = openSync(logPath, "a", 0o600);
-  const quoteTimeoutMs = journey.scenario.family === "complete-input-success" ? 500 : 40;
+  const quoteTimeoutMs = journey.scenario.family === "complete-input-success" ? 500 : (journey.scenario.family === "duplicate-resume-late-result-races" ? 200 : 40);
   const env = curatedEnv(run.peer, journey.stateDirectory, journey.auditPath, journey.intakeDirectory, port, revision, quoteTimeoutMs);
   const child = spawn(process.execPath, [helperPath, "__server"], {
     cwd: repoRoot,
@@ -789,6 +791,7 @@ class JourneyRuntime {
     this.messagesDriven.push({
       message_id: message.id,
       type: message.type,
+      interactive_type: message.interactive?.type ?? null,
       text: evidenceText(message.text),
       action: message.action ?? null,
       signature: "valid-hmac-sha256",
@@ -1294,6 +1297,25 @@ async function driveCloseParity(runtime, scenario) {
     failDateButtons: scenario.interaction_format === "meta-button-fallback",
   };
   const terminal = await driveProgressive(runtime, scenario, options);
+  if (scenario.variant === "quote-hire") {
+    const quoteRequestsBefore = runtime.context.quoteRequests.length;
+    const previousRequestId = terminal.state.active_quote_request_id;
+    const hire = await runtime.tap("quote_hire");
+    runtime.check(runtime.messagesDriven.at(-1)?.interactive_type === "list_reply", "quote_hire is sent via list_reply");
+    runtime.check(hire.event.text.includes(sha256(previousRequestId).slice(0, 8)), "hire reply includes reference");
+    runtime.check(!forbiddenCopy.test(hire.event.text), "hire reply has no forbidden copy");
+    runtime.check(!hire.event.text.includes("Não consegui concluir"), "hire reply has no failure text");
+    const state = await runtime.waitForState((candidate) => candidate.stage === "handoff", "handoff state after quote_hire");
+    runtime.check(state.handoff_reason === "issuance_requested", "handoff reason is issuance_requested");
+    runtime.check(state.active_quote_request_id === previousRequestId, "quote request id is preserved");
+    runtime.check(state.quote !== null, "quote is preserved after issuance handoff");
+    const currentJob = state.quote_jobs.find((job) => job.request_id === previousRequestId);
+    runtime.check(currentJob?.status === "delivered", "quote job remains delivered");
+    runtime.check(runtime.context.quoteRequests.length === quoteRequestsBefore, "zero new POST /quote after quote_hire");
+    const audits = await runtime.auditEvents();
+    runtime.check(audits.some((event) => event.event === "handoff" && event.handoff_reason === "issuance_requested"), "issuance handoff is audited");
+    return { ...terminal, state };
+  }
   const csatQuestion = await runtime.tap("service_end");
   runtime.check(csatQuestion.event.actions.map((action) => action.id).join(",") === "csat_great,csat_regular,csat_bad", "ending offers all CSAT choices");
   const action = csatAction(scenario.variant);
@@ -1501,7 +1523,7 @@ function aggregate(results, full) {
     assert.ok(results.every((row) => row.messages_driven[0]?.signature === "valid-hmac-sha256"), "every journey must begin with a signed webhook");
     assert.ok(results.every((row) => row.terminal_outcome === row.manifest.expected_terminal), "every journey must reach its committed terminal outcome");
     assert.ok(results.every((row) => row.copy_policy.passed && row.persistence_checks.state_saved && row.audit_checks.persisted), "every journey must pass copy, persistence, and audit proof");
-    const parityRows = results.filter((row) => row.family === "close-csat-channel-fallback-parity");
+    const parityRows = results.filter((row) => row.family === "close-csat-channel-fallback-parity" && row.manifest.variant !== "quote-hire");
     for (const format of ["meta-rich", "meta-list-fallback", "meta-button-fallback", "cli-replay"]) {
       for (const plan of ["essencial", "completo", "premium"]) {
         const match = parityRows.find((row) => row.manifest.interaction_format === format && row.coverage.plan === plan);
@@ -1522,7 +1544,7 @@ function aggregate(results, full) {
     for (const reason of [
       "quote_service_unavailable", "quote_timeout", "quote_network_error", "invalid_quote_response",
       "invalid_quote_payload", "quote_http_401", "quote_refused", "human_requested", "unprocessed_media",
-      "unsupported_request", "repeated_ambiguity", "llm_unavailable",
+      "unsupported_request", "repeated_ambiguity", "llm_unavailable", "issuance_requested",
     ]) assert.ok(coverage.handoff_reasons[reason] > 0, `missing handoff reason: ${reason}`);
     for (const outcome of ["first-attempt-success", "timeout-recovered", "500-recovered", "502-recovered", "503-recovered", "500-502-recovered"]) {
       assert.ok(coverage.retry_outcomes[outcome] > 0, `missing retry outcome: ${outcome}`);
