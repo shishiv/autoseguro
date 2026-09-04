@@ -397,10 +397,21 @@ test("aceita quote_hire interativo e mantém rejeição de ação desconhecida",
   await testHarness.transport.waitForIdle();
   assert.equal(handled[0]?.action, "quote_hire");
 
+  const acceptedCorrelated = await postWebhook(baseUrl, interactiveButtonPayload("wamid-quote-hire-ref", "quote_hire:5bcad7bc"));
+  assert.equal(acceptedCorrelated.status, 200);
+  assert.equal(await acceptedCorrelated.text(), "EVENT_RECEIVED");
+  await waitUntil(() => handled.length === 2);
+  await testHarness.transport.waitForIdle();
+  assert.equal(handled[1]?.action, "quote_hire:5bcad7bc");
+
+  const rejectedMalformed = await postWebhook(baseUrl, interactiveButtonPayload("wamid-malformed-ref", "quote_hire:xyz_invalid"));
+  assert.equal(rejectedMalformed.status, 400);
+  assert.deepEqual(await rejectedMalformed.json(), { error: "malformed_payload" });
+
   const rejected = await postWebhook(baseUrl, interactiveButtonPayload("wamid-unknown-action", "unknown_action"));
   assert.equal(rejected.status, 400);
   assert.deepEqual(await rejected.json(), { error: "malformed_payload" });
-  assert.equal(handled.length, 1);
+  assert.equal(handled.length, 2);
 });
 
 test("recusa destinatário fora da allowlist sem intake", async (context) => {

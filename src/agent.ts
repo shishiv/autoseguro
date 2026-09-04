@@ -80,9 +80,9 @@ const planInteraction: ReplyInteraction = {
   kind: "list",
   button_label: "Ver planos",
   actions: [
-    { id: "plan_essencial", title: "Essencial — colisão, roubo e furto" },
-    { id: "plan_completo", title: "Completo — terceiros e vidros" },
-    { id: "plan_premium", title: "Premium — carro reserva e assistência" },
+    { id: "plan_essencial", title: "Essencial" },
+    { id: "plan_completo", title: "Completo" },
+    { id: "plan_premium", title: "Premium" },
   ],
 };
 const dateInteraction: ReplyInteraction = {
@@ -93,17 +93,21 @@ const dateInteraction: ReplyInteraction = {
     { id: "date_other", title: "Outra data" },
   ],
 };
-const quoteActions: ReplyInteraction = {
-  kind: "list",
-  button_label: "Opções",
-  section_title: "Próximos passos",
-  actions: [
-    { id: "quote_hire", title: "Contratar plano" },
-    { id: "quote_new", title: "Nova cotação" },
-    { id: "human_help", title: "Falar com uma pessoa" },
-    { id: "service_end", title: "Encerrar atendimento" },
-  ],
-};
+
+function quoteActions(requestId?: string | null): ReplyInteraction {
+  const hireId: ActionId = requestId ? `quote_hire:${reference(requestId)}` : "quote_hire";
+  return {
+    kind: "list",
+    button_label: "Opções",
+    section_title: "Próximos passos",
+    actions: [
+      { id: hireId, title: "Contratar plano" },
+      { id: "quote_new", title: "Nova cotação" },
+      { id: "human_help", title: "Falar com uma pessoa" },
+      { id: "service_end", title: "Encerrar atendimento" },
+    ],
+  };
+}
 const csatActions: ReplyInteraction = {
   kind: "buttons",
   actions: [
@@ -315,7 +319,7 @@ function formatDate(value: string): string {
   return `${day}/${month}/${year}`;
 }
 
-function reference(requestId: string): string {
+export function reference(requestId: string): string {
   return createHash("sha256").update(requestId).digest("hex").slice(0, 8);
 }
 
@@ -342,7 +346,7 @@ function quoteReply(quote: QuoteResponse, requestId: string, startDate: string):
     ].filter(Boolean).join("\n"),
     outcome: "resolved",
     quote_request_id: requestId,
-    interaction: quoteActions,
+    interaction: quoteActions(requestId),
   };
 }
 
@@ -359,7 +363,7 @@ function terminalReply(state: ConversationState): AgentReply {
       text: "Sua cotação continua disponível.",
       outcome: "resolved",
       quote_request_id: state.active_quote_request_id,
-      interaction: quoteActions,
+      interaction: quoteActions(state.active_quote_request_id),
     };
   }
   return {
@@ -1049,9 +1053,10 @@ export class AutoSeguroAgent {
     if (dateActions.has(action)) {
       return this.chooseDate(state, messageId, action as "date_today" | "date_tomorrow" | "date_other");
     }
+    if (action === "quote_hire" || action.startsWith("quote_hire:")) {
+      return this.closeDeal(state, messageId, action);
+    }
     switch (action) {
-      case "quote_hire":
-        return this.closeDeal(state, messageId);
       case "human_help":
         return this.handoff(state, messageId, "human_requested");
       case "plans_view":
@@ -1153,7 +1158,11 @@ export class AutoSeguroAgent {
     }, "message");
   }
 
-  private async closeDeal(state: ConversationState, messageId: string): Promise<AgentReply> {
+  private async closeDeal(
+    state: ConversationState,
+    messageId: string,
+    action?: ActionId,
+  ): Promise<AgentReply> {
     if (state.stage !== "resolved" || state.quote === null || state.active_quote_request_id === null) {
       return this.finish(state, messageId, {
         text: state.stage === "quoting"
@@ -1164,11 +1173,23 @@ export class AutoSeguroAgent {
       }, "message");
     }
     const requestId = state.active_quote_request_id;
+    const currentRef = reference(requestId);
+    if (action && action.startsWith("quote_hire:")) {
+      const targetRef = action.slice("quote_hire:".length);
+      if (targetRef && targetRef !== currentRef) {
+        return this.finish(state, messageId, {
+          text: `Esta opção pertence a uma cotação anterior. Sua cotação ativa é a Referência: ${currentRef}.`,
+          outcome: stateOutcome(state),
+          quote_request_id: requestId,
+          interaction: quoteActions(requestId),
+        }, "message");
+      }
+    }
     state.stage = "handoff";
     state.awaiting_csat = false;
     state.handoff_reason = "issuance_requested";
     return this.finish(state, messageId, {
-      text: `Sua cotação foi separada para emissão. Uma pessoa do nosso time vai orientar você com os próximos passos. Referência: ${reference(requestId)}`,
+      text: `Sua cotação foi separada para emissão. Uma pessoa do nosso time vai orientar você com os próximos passos. Referência: ${currentRef}`,
       outcome: "handoff",
       quote_request_id: requestId,
     }, "handoff");

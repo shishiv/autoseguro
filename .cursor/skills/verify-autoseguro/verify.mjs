@@ -714,7 +714,7 @@ function latestInteraction(context, actionId, status = 200) {
   return context.graphEvents.toReversed().find((event) => (
     event.kind === "outbound"
     && event.status === status
-    && event.actions.some((action) => action.id === actionId)
+    && event.actions.some((action) => action.id === actionId || action.id.startsWith(`${actionId}:`))
   ));
 }
 
@@ -775,7 +775,7 @@ class JourneyRuntime {
   async tap(actionId) {
     const offered = successfulOutbound(this.context).at(-1);
     assert.ok(offered, `action ${actionId} was not returned by AutoSeguro`);
-    const action = offered.actions.find((candidate) => candidate.id === actionId);
+    const action = offered.actions.find((candidate) => candidate.id === actionId || candidate.id.startsWith(`${actionId}:`));
     assert.ok(action, `action ${actionId} is missing`);
     this.actions.push(actionId);
     const replyType = offered.interactionKind === "list" ? "list_reply" : "button_reply";
@@ -792,7 +792,7 @@ class JourneyRuntime {
   async chooseFallback(actionId) {
     const offered = latestInteraction(this.context, actionId, 500);
     assert.ok(offered, `failed rich interaction for ${actionId} was not captured`);
-    const index = offered.actions.findIndex((candidate) => candidate.id === actionId);
+    const index = offered.actions.findIndex((candidate) => candidate.id === actionId || candidate.id.startsWith(`${actionId}:`));
     assert.ok(index >= 0);
     const fallback = successfulOutbound(this.context).toReversed().find((event) => event.payload.type === "text" && event.text.includes(`${index + 1}.`));
     assert.ok(fallback, `numbered fallback for ${actionId} was not delivered`);

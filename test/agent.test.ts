@@ -5,12 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { test, type TestContext } from "node:test";
-import { AutoSeguroAgent } from "../src/agent.ts";
+import { AutoSeguroAgent, reference } from "../src/agent.ts";
+import { renderPlainText } from "../src/interactions.ts";
 import { OpenAICompatibleLlm } from "../src/llm.ts";
 import { AuditLog, FileConversationStore } from "../src/persistence.ts";
 import { redactSensitiveText } from "../src/privacy.ts";
 import { QuoteClient } from "../src/quote-client.ts";
 import type {
+  ActionId,
   CandidateFields,
   IncomingMessage,
   LanguageModel,
@@ -1100,12 +1102,14 @@ test("intenção de fechar cotação via botão aciona handoff comercial", async
   const before = await harness.store.load("conversation-1");
   assert.equal(quote?.interaction?.kind, "list");
   assert.equal(quote?.interaction?.button_label, "Opções");
-  assert.deepEqual(quote?.interaction?.actions.map((action) => action.id), ["quote_hire", "quote_new", "human_help", "service_end"]);
+  const expectedRef = reference(quote?.quote_request_id ?? "");
+  const expectedHireAction = `quote_hire:${expectedRef}` as ActionId;
+  assert.deepEqual(quote?.interaction?.actions.map((action) => action.id), [expectedHireAction, "quote_new", "human_help", "service_end"]);
 
-  const hireAction = await harness.agent.handle({ ...message("Contratar plano", "msg-hire"), action: "quote_hire" });
+  const hireAction = await harness.agent.handle({ ...message("Contratar plano", "msg-hire"), action: expectedHireAction });
   assert.equal(hireAction.outcome, "handoff");
   assert.match(hireAction.text, /Sua cotação foi separada para emissão/u);
-  assert.match(hireAction.text, /Referência: [0-9a-f]{8}/u);
+  assert.match(hireAction.text, new RegExp(`Referência: ${expectedRef}`, "u"));
   assert.doesNotMatch(hireAction.text, /\b(?:api|http|retry|processamento|protocolo)\b/iu);
   const stateAction = await harness.store.load("conversation-1");
   assert.equal(stateAction.stage, "handoff");
@@ -1201,3 +1205,63 @@ test("rejeita ano misturado com linguagem natural", async (context) => {
   assert.doesNotMatch(reply.text, /anotado/u);
   assert.equal(harness.requests.length, 0);
 });
+
+test("quote_hire com referência divergente rejeita e preserva cotação ativa em resolved", async (context) => {
+  const harness = await makeHarness(
+    context,
+    [understanding(completeFields())],
+    () => ({ status: 200, body: successfulQuote() }),
+  );
+  await harness.agent.handle(message());
+  const [quote] = await collectTerminal(harness.agent);
+  const activeRef = reference(quote?.quote_request_id ?? "");
+  const staleRef = "00000000";
+
+  const staleReply = await harness.agent.handle({
+    ...message("Contratar plano", "msg-stale"),
+    action: `quote_hire:${staleRef}` as ActionId,
+  });
+  assert.equal(staleReply.outcome, "resolved");
+  assert.match(staleReply.text, /Esta opção pertence a uma cotação anterior/u);
+  assert.match(staleReply.text, new RegExp(`Sua cotação ativa é a Referência: ${activeRef}`, "u"));
+  assert.equal(staleReply.interaction?.actions[0]?.id, `quote_hire:${activeRef}`);
+
+  const state = await harness.store.load("conversation-1");
+  assert.equal(state.stage, "resolved");
+  assert.equal(state.handoff_reason, null);
+  assert.ok(state.quote);
+  assert.equal(harness.requests.length, 1);
+});
+
+test("quote_hire sem sufixo de correlação ainda aciona handoff comercial para compatibilidade", async (context) => {
+  const harness = await makeHarness(
+    context,
+    [understanding(completeFields())],
+    () => ({ status: 200, body: successfulQuote() }),
+  );
+  await harness.agent.handle(message());
+  await collectTerminal(harness.agent);
+
+  const hireAction = await harness.agent.handle({ ...message("Contratar plano", "msg-hire-bare"), action: "quote_hire" });
+  assert.equal(hireAction.outcome, "handoff");
+  assert.match(hireAction.text, /Sua cotação foi separada para emissão/u);
+  const stateAction = await harness.store.load("conversation-1");
+  assert.equal(stateAction.stage, "handoff");
+  assert.equal(stateAction.handoff_reason, "issuance_requested");
+});
+
+test("plans_view retorna ações com títulos limpos de planos e renderização sem vazamento local", async (context) => {
+  const harness = await makeDeferredHarness(context, []);
+  harness.client.plans = officialPlansFixture();
+  const reply = await harness.agent.handle({ ...message("Ver planos", "msg-plans"), action: "plans_view" });
+  assert.equal(reply.interaction?.kind, "list");
+  assert.deepEqual(reply.interaction?.actions, [
+    { id: "plan_essencial", title: "Essencial" },
+    { id: "plan_completo", title: "Completo" },
+    { id: "plan_premium", title: "Premium" },
+  ]);
+  const rendered = renderPlainText(reply);
+  assert.match(rendered, /\n1\. Essencial\n2\. Completo\n3\. Premium$/u);
+  assert.doesNotMatch(rendered, /\b1\. Essencial —/u);
+});
+
