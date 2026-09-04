@@ -28,3 +28,4 @@ This directory is the maintained map for AutoSeguro's customer-visible WhatsApp 
 - [Pending asynchronous delivery](pending-async-delivery.md): fast acknowledgement, status, outbox, and ordering.
 - [Failure and handoff](failure-handoff.md): retry, refusal, transport, language, media, and human paths.
 - [Ending and CSAT](ending-csat.md): close action, all ratings, and rich/fallback/CLI parity.
+- [Quote hire](quote-hire.md): interactive list choice, preserved quote job, and issuance handoff.

@@ -64,6 +64,7 @@ async function main(): Promise<void> {
 
   const shutdown = (): void => {
     transport.stop();
+    server.closeAllConnections();
     server.close(() => process.exit(0));
   };
   process.on("SIGINT", shutdown);
