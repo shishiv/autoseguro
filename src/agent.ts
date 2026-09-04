@@ -48,6 +48,20 @@ interface AuditContext {
   job?: QuoteJob;
 }
 
+interface RemotePlan {
+  id: string;
+  nome: string;
+  franquia: number;
+  coberturas: string[];
+}
+
+interface RemotePlanCatalog {
+  currency: "BRL";
+  planos: RemotePlan[];
+  waitingCoverages: string[];
+  waitingDays: number;
+}
+
 const fieldQuestions: Record<RequiredFieldName, string> = {
   plano: "Qual plano você quer conhecer?",
   idade: "Qual é a sua idade?",
@@ -157,6 +171,118 @@ function validateMessage(input: IncomingMessage): void {
 
 function formatMoney(value: number, currency: string): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseRemotePlan(value: unknown): RemotePlan | null {
+  if (
+    !isRecord(value)
+    || typeof value.id !== "string"
+    || value.id.trim() === ""
+    || typeof value.nome !== "string"
+    || value.nome.trim() === ""
+    || typeof value.franquia !== "number"
+    || !Number.isFinite(value.franquia)
+    || value.franquia < 0
+    || !Array.isArray(value.coberturas)
+    || value.coberturas.length === 0
+    || !value.coberturas.every((coverage) => typeof coverage === "string" && coverage.trim() !== "")
+  ) {
+    return null;
+  }
+  return {
+    id: normalizeCommand(value.id),
+    nome: value.nome.trim(),
+    franquia: value.franquia,
+    coberturas: value.coberturas.map((coverage) => coverage.trim()),
+  };
+}
+
+function parseRemotePlans(value: unknown): RemotePlan[] | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+  const plans: RemotePlan[] = [];
+  for (const candidate of value) {
+    const plan = parseRemotePlan(candidate);
+    if (!plan) {
+      return null;
+    }
+    plans.push(plan);
+  }
+  return plans;
+}
+
+function parseNonEmptyStrings(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+  if (!value.every((item) => typeof item === "string" && item.trim() !== "")) {
+    return null;
+  }
+  return value.map((item) => item.trim());
+}
+
+function isWaitingDays(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function parseRemoteWaiting(value: unknown): Pick<RemotePlanCatalog, "waitingCoverages" | "waitingDays"> | null {
+  const fallback = { waitingCoverages: ["roubo", "furto"], waitingDays: 30 };
+  if (value === undefined) {
+    return fallback;
+  }
+  if (!isRecord(value) || (value.carencia !== undefined && !isRecord(value.carencia))) {
+    return null;
+  }
+  if (!isRecord(value.carencia)) {
+    return fallback;
+  }
+  const waitingDays = isWaitingDays(value.carencia.dias) ? value.carencia.dias : 30;
+  if (value.carencia.coberturas_com_carencia === undefined) {
+    return { ...fallback, waitingDays };
+  }
+  const waitingCoverages = parseNonEmptyStrings(value.carencia.coberturas_com_carencia);
+  return waitingCoverages ? { waitingCoverages, waitingDays } : null;
+}
+
+function parseRemotePlanCatalog(remote: Record<string, unknown> | null): RemotePlanCatalog | null {
+  if (!remote || remote.moeda !== "BRL") {
+    return null;
+  }
+  const planos = parseRemotePlans(remote.planos);
+  const waiting = parseRemoteWaiting(remote.regras);
+  return planos && waiting ? { currency: remote.moeda, planos, ...waiting } : null;
+}
+
+function formatCoverage(value: string): string {
+  const normalized = value.replaceAll("_", " ");
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+}
+
+function formatWaitingPeriod(coverages: string[], days: number): string {
+  const subject = coverages.map(formatCoverage).join(" e ");
+  return `${subject} ${coverages.length === 1 ? "passa" : "passam"} a valer após ${days} dias contados do início da cobertura.`;
+}
+
+function explainRemotePlan(plan: RemotePlan, catalog: RemotePlanCatalog): string {
+  return [
+    `Plano ${plan.nome}`,
+    `Coberturas: ${plan.coberturas.map(formatCoverage).join(", ")}.`,
+    `Franquia: ${formatMoney(plan.franquia, catalog.currency)}.`,
+    formatWaitingPeriod(catalog.waitingCoverages, catalog.waitingDays),
+  ].join("\n");
+}
+
+function formatRemotePlanCatalog(catalog: RemotePlanCatalog): string {
+  return [
+    "Planos disponíveis:",
+    ...catalog.planos.map((plan) => `• ${plan.nome} — ${plan.coberturas.map(formatCoverage).join(", ")}. Franquia: ${formatMoney(plan.franquia, catalog.currency)}.`),
+    formatWaitingPeriod(catalog.waitingCoverages, catalog.waitingDays),
+  ].join("\n");
 }
 
 function formatDate(value: string): string {
@@ -347,6 +473,16 @@ function failureReply(requestId: string): AgentReply {
   };
 }
 
+function humanHelpReply(requestId: string, hasQuote: boolean): AgentReply {
+  return {
+    text: hasQuote
+      ? `Uma pessoa do nosso time vai orientar você sobre a sua cotação. Referência: ${reference(requestId)}`
+      : `Uma pessoa do time vai orientar você e continuar o atendimento. Referência: ${reference(requestId)}`,
+    outcome: "handoff",
+    quote_request_id: requestId,
+  };
+}
+
 export class AutoSeguroAgent {
   private readonly store: FileConversationStore;
   private readonly audit: AuditLog;
@@ -496,6 +632,23 @@ export class AutoSeguroAgent {
     }
   }
 
+  private async explainPlan(queriedPlan?: string | null): Promise<string> {
+    const normalized = typeof queriedPlan === "string" ? normalizeCommand(queriedPlan) : null;
+    const localPlan = normalized && Object.hasOwn(planCatalog, normalized) ? normalized as PlanId : null;
+    const fallback = localPlan ? explainPlanDetails(localPlan) : formatPlanCatalogSummary();
+    let catalog: RemotePlanCatalog | null;
+    try {
+      catalog = parseRemotePlanCatalog(await this.quoteClient.fetchPlans());
+    } catch {
+      return fallback;
+    }
+    if (!catalog) {
+      return fallback;
+    }
+    const plan = normalized ? catalog.planos.find((candidate) => candidate.id === normalized) : undefined;
+    return plan ? explainRemotePlan(plan, catalog) : formatRemotePlanCatalog(catalog);
+  }
+
   private async collectScalar(
     state: ConversationState,
     messageId: string,
@@ -536,9 +689,7 @@ export class AutoSeguroAgent {
       delete candidates.plano;
       const validated = validateCandidates(candidates, this.timestamp().slice(0, 10));
       state.fields = mergeFields(state.fields, validated.values, messageId, this.fieldSource);
-      const explanation = typeof queriedPlan === "string" && queriedPlan in planCatalog
-        ? explainPlanDetails(queriedPlan as PlanId)
-        : formatPlanCatalogSummary();
+      const explanation = await this.explainPlan(typeof queriedPlan === "string" ? queriedPlan : null);
       const missing = missingFields(state.fields);
       return this.awaitData(state, messageId, missing, validated.errors, explanation);
     }
@@ -846,13 +997,20 @@ export class AutoSeguroAgent {
     messageId: string,
     reason: string,
   ): Promise<AgentReply> {
+    const resolved = state.stage === "resolved";
+    const hasQuote = state.quote !== null;
     this.cancelActiveJob(state.conversation_id);
-    this.failActiveStateJob(state, reason);
+    if (!resolved) {
+      this.failActiveStateJob(state, reason);
+    }
     state.stage = "handoff";
     state.awaiting_csat = false;
     state.handoff_reason = reason;
     state.active_quote_request_id ??= this.createId();
-    return this.finish(state, messageId, failureReply(state.active_quote_request_id), "handoff");
+    const reply = reason === "human_requested"
+      ? humanHelpReply(state.active_quote_request_id, hasQuote)
+      : failureReply(state.active_quote_request_id);
+    return this.finish(state, messageId, reply, "handoff");
   }
 
   private async processAction(
@@ -876,7 +1034,7 @@ export class AutoSeguroAgent {
         return this.handoff(state, messageId, "human_requested");
       case "plans_view":
         return this.finish(state, messageId, {
-          text: formatPlanCatalogSummary(),
+          text: await this.explainPlan(),
           outcome: stateOutcome(state),
           quote_request_id: state.active_quote_request_id,
           interaction: planInteraction,

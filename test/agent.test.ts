@@ -70,9 +70,12 @@ class StubLlm implements LanguageModel {
 
 class DeferredQuoteClient implements QuoteClientPort {
   readonly calls: DeferredCall[] = [];
+  plans: Record<string, unknown> | null = null;
+  planCalls = 0;
 
   fetchPlans(): Promise<Record<string, unknown> | null> {
-    return Promise.resolve(null);
+    this.planCalls += 1;
+    return Promise.resolve(this.plans);
   }
 
   request(
@@ -569,6 +572,8 @@ test("handoff humano vence um resultado tardio", async (context) => {
   await waitForCalls(harness.client, 1);
   const handoff = await harness.agent.handle(message("Quero falar com uma pessoa", "msg-human"));
   assert.equal(handoff.outcome, "handoff");
+  assert.match(handoff.text, /continuar o atendimento/u);
+  assert.doesNotMatch(handoff.text, /Não consegui/u);
   await harness.client.succeed(0, 209.9);
   await harness.agent.waitForIdle("conversation-1");
   const state = await harness.store.load("conversation-1");
@@ -747,6 +752,8 @@ test("novo orçamento e ajuda humana usam ações determinísticas", async (cont
   assert.equal(next.interaction?.kind, "list");
   const help = await harness.agent.handle({ ...message("Falar com uma pessoa", "msg-help"), action: "human_help" });
   assert.equal(help.outcome, "handoff");
+  assert.match(help.text, /continuar o atendimento/u);
+  assert.doesNotMatch(help.text, /Não consegui/u);
   assert.equal((await harness.store.load("conversation-1")).awaiting_csat, false);
 });
 
@@ -956,6 +963,75 @@ test("informação sobre plano durante a coleta explica benefícios e mantém a 
   assert.match(reply.text, /Qual plano você quer conhecer\?/u);
   const state = await harness.store.load("conversation-1");
   assert.equal(state.fields.plano, undefined);
+});
+
+test("informação de planos prioriza catálogo remoto validado sem expor preço base", async (context) => {
+  const harness = await makeDeferredHarness(context, [understanding({ plano: "premium" }, "information")]);
+  harness.client.plans = {
+    moeda: "BRL",
+    planos: [
+      { id: "essencial", nome: "Essencial Remoto", base_mensal: 12.34, franquia: 6789, coberturas: ["cobertura_basica"] },
+      { id: "premium", nome: "Premium Remoto", base_mensal: 56.78, franquia: 7777, coberturas: ["cobertura_remota", "vidros"] },
+    ],
+    regras: { carencia: { dias: 45, coberturas_com_carencia: ["cobertura_remota"] } },
+  };
+  const detail = await harness.agent.handle(message("O Premium cobre vidros?", "msg-remote-detail"));
+  assert.match(detail.text, /Plano Premium Remoto/u);
+  assert.match(detail.text, /Cobertura remota, Vidros/u);
+  assert.match(detail.text, /7\.777,00/u);
+  assert.match(detail.text, /Cobertura remota passa a valer após 45 dias/u);
+  assert.doesNotMatch(detail.text, /56,78|Assistência 24h/u);
+  const summary = await harness.agent.handle({ ...message("Ver planos", "msg-remote-summary"), action: "plans_view" });
+  assert.match(summary.text, /Essencial Remoto/u);
+  assert.match(summary.text, /Premium Remoto/u);
+  assert.doesNotMatch(summary.text, /12,34|56,78|4\.500,00/u);
+  assert.equal(harness.client.planCalls, 2);
+  assert.equal((await harness.store.load("conversation-1")).fields.plano, undefined);
+});
+
+test("catálogo remoto inválido usa o snapshot local", async (context) => {
+  const harness = await makeDeferredHarness(context, [understanding({ plano: "premium" }, "information")]);
+  harness.client.plans = {
+    moeda: "USD",
+    planos: [{ id: "premium", nome: "Premium USD", franquia: 1, coberturas: ["cobertura_usd"] }],
+  };
+  const reply = await harness.agent.handle(message("O Premium tem assistência?", "msg-invalid-catalog"));
+  assert.match(reply.text, /Plano Premium/u);
+  assert.match(reply.text, /Assistência 24h/u);
+  assert.match(reply.text, /1\.500,00/u);
+});
+
+test("catálogo remoto sem regra de carência usa trinta dias", async (context) => {
+  const harness = await makeDeferredHarness(context, [understanding({ plano: "premium" }, "information")]);
+  harness.client.plans = {
+    moeda: "BRL",
+    planos: [{ id: "premium", nome: "Premium Remoto", franquia: 7777, coberturas: ["vidros"] }],
+  };
+  const reply = await harness.agent.handle(message("O Premium cobre vidros?", "msg-default-waiting"));
+  assert.match(reply.text, /Roubo e Furto passam a valer após 30 dias/u);
+});
+
+test("ajuda humana após cotação preserva o resultado entregue", async (context) => {
+  const harness = await makeHarness(
+    context,
+    [understanding(completeFields())],
+    () => ({ status: 200, body: successfulQuote() }),
+  );
+  await harness.agent.handle(message());
+  await collectTerminal(harness.agent);
+  const before = await harness.store.load("conversation-1");
+  const reply = await harness.agent.handle({ ...message("Falar com uma pessoa", "msg-human-resolved"), action: "human_help" });
+  const after = await harness.store.load("conversation-1");
+  assert.match(reply.text, /orientar você sobre a sua cotação/u);
+  assert.match(reply.text, /Referência: [0-9a-f]{8}/u);
+  assert.doesNotMatch(reply.text, /Não consegui/u);
+  assert.equal(after.stage, "handoff");
+  assert.equal(after.handoff_reason, "human_requested");
+  assert.deepEqual(after.quote, before.quote);
+  assert.deepEqual(after.fields, before.fields);
+  assert.deepEqual(after.quote_jobs, before.quote_jobs);
+  assert.equal(after.quote_jobs[0]?.status, "delivered");
+  assert.equal(harness.requests.length, 1);
 });
 
 test("recusa 422 exibe o motivo da seguradora sem jargão técnico", async (context) => {
